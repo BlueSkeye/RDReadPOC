@@ -1,0 +1,4 @@
+﻿
+
+Ideas
+- Implement asynchronous I/O. Extended parameters are required.
