@@ -12,7 +12,7 @@ namespace RawDiskReadPOC
         /// 
         /// </summary>
         /// <remarks>See https://msdn.microsoft.com/en-us/library/windows/desktop/cc644950(v=vs.85).aspx</remarks>
-        internal void Acquire()
+        internal void Acquire(IntPtr handle)
         {
         }
     }
