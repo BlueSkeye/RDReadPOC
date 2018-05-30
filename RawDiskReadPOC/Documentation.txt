@@ -2,3 +2,19 @@
 
 Ideas
 - Implement asynchronous I/O. Extended parameters are required.
+
+Sample MBR partitions
+80 20 21 00 27 59 1A BF 00 08 00 00 00 E0 2E 00
+Active Start @20/21/00 Hidden NTFS End@59/1A/BF 0x00000800 sectors before, 0x002EE000 sectors 
+00 59 1B BF 07 FE FF FF 00 E8 2E 00 56 9D BD 72
+Inactive Start @59/AB/BF NTFS End@FE/FF/FF 0x002EE800 sectors before, 0x72BD9D56 sectors
+00 FE FF FF 27 FE FF FF 00 88 EC 72 00 30 1B 00
+Inactive Start@FE/FF/FF Hidden NTFS End@FE/FF/FF 0x72EC8800 sectors before, 0x001B3000 sectors
+00 FE FF FF 17 FE FF FF 00 B8 07 73 00 B0 68 01
+Inactive Start@FE/FF/FF Hidden FS End@FE/FF/FF 0x7307B800 sectors before, 0x0168B000 sectors 
+
+00000800-002EE7FF -> Recovery partition
+002EE800-72EC8555 -> OS partition -> 0x72BD9D56/1925029206 sectors -> 962514603 bytes
+GAP
+72EC8800-7307B7FF -> Unknown partition
+7307B800-747067FF -> Unknown partition

@@ -23,15 +23,9 @@ namespace RawDiskReadPOC
                     Console.WriteLine("Physical drive opening failed. Error 0x{0:X8}", nativeError);
                     return 1;
                 }
-                byte[] buffer = new byte[4096];
-                fixed(void* pBuffer = buffer) {
-                    uint numBytesRead;
-                    if (!Natives.ReadFile(handle, pBuffer, (uint)buffer.Length, out numBytesRead, IntPtr.Zero)) {
-                        nativeError = Marshal.GetLastWin32Error();
-                        Console.WriteLine("Initial read failed. Error 0x{0:X8}", nativeError);
-                        return 2;
-                    }
-                }
+                PartitionManager partitionManager = new PartitionManager(handle, geometry);
+                partitionManager.Discover();
+                return 0;
             }
             finally {
                 if (IntPtr.Zero == handle) {
@@ -39,7 +33,6 @@ namespace RawDiskReadPOC
                     handle = IntPtr.Zero;
                 }
             }
-            return 0;
         }
     }
 }

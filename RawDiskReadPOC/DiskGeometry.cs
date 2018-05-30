@@ -11,6 +11,8 @@ namespace RawDiskReadPOC
 
         internal ulong DiskSize { get; private set; }
 
+        internal IntPtr Handle {  get { return _hStorage; } }
+
         internal MEDIA_TYPE MediaType { get; private set; }
 
         internal uint SectorsPerTrack { get; private set; }
@@ -21,6 +23,7 @@ namespace RawDiskReadPOC
         /// <remarks>See https://msdn.microsoft.com/en-us/library/windows/desktop/cc644950(v=vs.85).aspx</remarks>
         internal unsafe void Acquire(IntPtr handle)
         {
+            _hStorage = handle;
             byte[] buffer = new byte[ConservativeExtendedGeometryStructureSize];
             fixed(void* pBuffer = buffer) {
                 uint returnedBytes;
@@ -40,6 +43,34 @@ namespace RawDiskReadPOC
                 this.SectorsPerTrack = pGeometry->Geometry.SectorsPerTrack;
                 this.TracksPerCylinder = pGeometry->Geometry.TracksPerCylinder;
                 return;
+            }
+        }
+
+        private ulong GetStreamOffset(uint absoluteSectorNumber)
+        {
+            return absoluteSectorNumber * this.BytesPerSector;
+        }
+
+        internal unsafe void* Read(ulong logicalBlockAddress, uint count = 1)
+        {
+            void* buffer = (void*)Marshal.AllocCoTaskMem((int)(count * this.BytesPerSector));
+            Read(logicalBlockAddress, buffer, count);
+            return buffer;
+        }
+
+        internal unsafe void Read(ulong logicalBlockAddress, void *into, uint count = 1)
+        {
+            uint readCount;
+            uint expectedCount = count * this.BytesPerSector;
+            ulong offset = logicalBlockAddress * this.BytesPerSector;
+            if (!Natives.SetFilePointerEx(_hStorage, (long)offset, out offset, Natives.FILE_BEGIN)) {
+                throw new ApplicationException();
+            }
+            if (!Natives.ReadFile(_hStorage, into, expectedCount, out readCount, IntPtr.Zero)) {
+                throw new ApplicationException();
+            }
+            if (readCount != expectedCount) {
+                throw new ApplicationException();
             }
         }
 
@@ -114,6 +145,7 @@ namespace RawDiskReadPOC
             PARTITION_STYLE_RAW  = 2
         }
 
+        private IntPtr _hStorage;
         private const int ConservativeExtendedGeometryStructureSize = 1024;
         private static uint IOCTL_DISK_GET_DRIVE_GEOMETRY_EX =
             Natives.CTL_CODE(Natives.FILE_DEVICE_TYPE.IOCTL_DISK_BASE, 0x0028, Natives.IOCTL_METHOD.METHOD_BUFFERED,

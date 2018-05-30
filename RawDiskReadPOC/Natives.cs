@@ -42,6 +42,16 @@ namespace RawDiskReadPOC
             [Out] out uint lpNumberOfBytesRead,
             [In] IntPtr /* LPOVERLAPPED */ lpOverlapped);
 
+        [DllImport("KERNEL32.DLL", CharSet = CharSet.Unicode, SetLastError = true)]
+        internal static extern bool SetFilePointerEx(
+            [In] IntPtr hFile,
+            [In] long liDistanceToMove,
+            [Out] out ulong lpNewFilePointer,
+            [In] uint dwMoveMethod);
+        internal const uint FILE_BEGIN = 0;
+        internal const uint FILE_CURRENT = 0;
+        internal const uint FILE_END = 0;
+
         [DllImport("KERNEL32.DLL", CharSet = CharSet.Unicode)]
         internal static extern void SetLastError(
             [In] uint errorCode);

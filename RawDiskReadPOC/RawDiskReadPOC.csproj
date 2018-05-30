@@ -50,7 +50,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="DiskGeometry.cs" />
+    <Compile Include="Helpers.cs" />
     <Compile Include="Natives.cs" />
+    <Compile Include="PartitionManager.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
