@@ -22,8 +22,12 @@ namespace RawDiskReadPOC
                 if (0xAA != masterBootRecord[511]) { throw new ApplicationException(); }
                 // From http://thestarman.pcministry.com/asm/mbr/PartTables.htm
                 for (uint partitionIndex = 0; partitionIndex < 4; partitionIndex++) {
-                    _partitions.Add(PartitionBase.Create(masterBootRecord, 446 + (16 * partitionIndex)));
+                    PartitionBase newPartition = PartitionBase.Create(masterBootRecord, 446 + (16 * partitionIndex));
+                    if (null != newPartition) {
+                        _partitions.Add(newPartition);
+                    }
                 }
+                Console.WriteLine("Found {0} partitions.", _partitions.Count);
                 return;
             }
             finally {
@@ -56,6 +60,9 @@ namespace RawDiskReadPOC
                 uint sectorsCount = *((uint*)(buffer + 12));
                 // See : https://en.wikipedia.org/wiki/Partition_type
                 switch (partitionType) {
+                    case 0x00:
+                        // Empty entry.
+                        return null;
                     case 0x07:
                         return new NTFSPartition(hiddenPartition, startSector, sectorsCount);
                     case 0x17:
@@ -69,7 +76,8 @@ namespace RawDiskReadPOC
                         hiddenPartition = true;
                         goto case 0x07;
                     default:
-                        throw new ApplicationException("unsupported partition type.");
+                        Console.WriteLine("unsupported partition type 0x{0:X2}.", partitionType);
+                        return null;
                 }
             }
         }

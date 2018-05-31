@@ -51,15 +51,11 @@ namespace RawDiskReadPOC
             return absoluteSectorNumber * this.BytesPerSector;
         }
 
-        internal unsafe void* Read(ulong logicalBlockAddress, uint count = 1)
+        internal unsafe void* Read(ulong logicalBlockAddress, uint count = 1, void *into = null)
         {
-            void* buffer = (void*)Marshal.AllocCoTaskMem((int)(count * this.BytesPerSector));
-            Read(logicalBlockAddress, buffer, count);
-            return buffer;
-        }
-
-        internal unsafe void Read(ulong logicalBlockAddress, void *into, uint count = 1)
-        {
+            if (null == into) {
+                into = (void*)Marshal.AllocCoTaskMem((int)(count * this.BytesPerSector));
+            }
             uint readCount;
             uint expectedCount = count * this.BytesPerSector;
             ulong offset = logicalBlockAddress * this.BytesPerSector;
@@ -72,6 +68,7 @@ namespace RawDiskReadPOC
             if (readCount != expectedCount) {
                 throw new ApplicationException();
             }
+            return into;
         }
 
         [Serializable()]
