@@ -35,6 +35,11 @@ namespace RawDiskReadPOC
             }
         }
 
+        internal IEnumerable<PartitionBase> EnumeratePartitions()
+        {
+            foreach(PartitionBase item in _partitions) { yield return item; }
+        }
+
         private DiskGeometry _geometry;
         private List<PartitionBase> _partitions = new List<PartitionBase>();
         private IntPtr _rawHandle;
@@ -47,6 +52,8 @@ namespace RawDiskReadPOC
                 SectorCount = sectorCount;
             }
 
+            internal bool Active { get; private set; }
+
             internal uint SectorCount { get; private set; }
 
             internal uint StartSector { get; private set; }
@@ -56,15 +63,17 @@ namespace RawDiskReadPOC
                 byte partitionType = buffer[offset + 4];
                 bool hiddenPartition = false;
                 bool activePartition = (0x80 == buffer[offset]);
-                uint startSector = *((uint*)(buffer + 8));
-                uint sectorsCount = *((uint*)(buffer + 12));
+                uint startSector = *((uint*)(buffer + offset + 8));
+                uint sectorsCount = *((uint*)(buffer + offset + 12));
+                PartitionBase result = null;
                 // See : https://en.wikipedia.org/wiki/Partition_type
                 switch (partitionType) {
                     case 0x00:
                         // Empty entry.
                         return null;
                     case 0x07:
-                        return new NTFSPartition(hiddenPartition, startSector, sectorsCount);
+                        result = new NTFSPartition(hiddenPartition, startSector, sectorsCount);
+                        break;
                     case 0x17:
                         // TODO : Should differentiate 0x17 & 0x27
                         hiddenPartition = true;
@@ -79,18 +88,11 @@ namespace RawDiskReadPOC
                         Console.WriteLine("unsupported partition type 0x{0:X2}.", partitionType);
                         return null;
                 }
+                if (null != result) {
+                    result.Active = activePartition;
+                }
+                return result;
             }
-        }
-
-        internal class NTFSPartition : PartitionBase
-        {
-            internal NTFSPartition(bool hidden, uint startSector, uint sectorCount)
-                : base(startSector, sectorCount)
-            {
-                Hidden = hidden;
-            }
-
-            internal bool Hidden { get; private set; }
         }
     }
 }

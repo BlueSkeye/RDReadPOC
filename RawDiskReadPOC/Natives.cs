@@ -34,6 +34,9 @@ namespace RawDiskReadPOC
             [Out] out uint lpBytesReturned,       // number of bytes returned
             [In] IntPtr /* LPOVERLAPPED */ lpOverlapped );        // OVERLAPPED structure
 
+        [DllImport("KERNEL32.DLL")]
+        internal static extern unsafe uint GetLastError();
+
         [DllImport("KERNEL32.DLL", CharSet = CharSet.Unicode, SetLastError = true)]
         internal static extern unsafe bool ReadFile(
             [In] IntPtr hFile,
