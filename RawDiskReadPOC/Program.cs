@@ -37,9 +37,11 @@ namespace RawDiskReadPOC
                             NTFSPartition ntfsPartition = partition as NTFSPartition;
                             if (null == ntfsPartition) { throw new NotSupportedException(); }
                             ntfsPartition.InterpretBootSector();
+                            ntfsPartition.CaptureMetadataFilePointers();
 
+                            // Read a whole cluster.
                             ulong mftRecordLBA = ntfsPartition.StartSector + (ntfsPartition.MFTClusterNumber * ntfsPartition.SectorsPerCluster);
-                            mftRecord = partitionManager.Read(mftRecordLBA, 2);
+                            mftRecord = partitionManager.Read(mftRecordLBA, ntfsPartition.SectorsPerCluster);
                             NtfsFileRecordHeader* recordHeader = (NtfsFileRecordHeader*)mftRecord;
                             Helpers.Dump(mftRecord, 2 * geometry.BytesPerSector);
                             continue;

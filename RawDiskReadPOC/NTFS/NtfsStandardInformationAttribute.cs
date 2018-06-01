@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
+﻿
 namespace RawDiskReadPOC.NTFS
 {
     internal class NtfsStandardInformationAttribute
@@ -42,11 +37,13 @@ namespace RawDiskReadPOC.NTFS
         internal uint SecurityId;
         /// <summary>The size, in bytes, of the charge to the quota for the file. If quotas are disabled,
         /// the value of QuotaCharge is zero.This member is only present in NTFS 3.0. If a volume has
-        /// been upgraded from an earlier version of NTFS to version 3.0, this member is only present        /// if the file has been accessed since the upgrade.</summary>
+        /// been upgraded from an earlier version of NTFS to version 3.0, this member is only present
+        /// if the file has been accessed since the upgrade.</summary>
         internal ulong QuotaCharge;
         /// <summary>The Update Sequence Number of the file. If journaling is not enabled, the value of
         /// Usn is zero.This member is only present in NTFS 3.0. If a volume has been upgraded from
-        /// an earlier version of NTFS to version 3.0, this member is only present if the file has been        /// accessed since the upgrade.</summary>
+        /// an earlier version of NTFS to version 3.0, this member is only present if the file has been
+        /// accessed since the upgrade.</summary>
         internal ulong Usn;
     }
 }

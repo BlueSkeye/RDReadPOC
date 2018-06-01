@@ -1,7 +1,7 @@
 ﻿
 namespace RawDiskReadPOC.NTFS
 {
-    internal class NtfsAttribute
+    internal struct NtfsAttribute
     {
         internal NtfsAttributeType AttributeType;
         /// <summary>The size, in bytes, of the resident part of the attribute.</summary>

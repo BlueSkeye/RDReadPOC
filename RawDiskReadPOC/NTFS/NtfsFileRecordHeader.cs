@@ -14,7 +14,7 @@ namespace RawDiskReadPOC.NTFS
         /// <summary>The offset, in bytes, from the start of the structure to the first attribute
         /// of the MFT entry</summary>
         internal ushort AttributesOffset;
-        /// <summary>A bit array of flags specifying properties of the MFT entry.The values defined
+        /// <summary>A bit array of flags specifying properties of the MFT entry. The values defined
         /// include:0x0001 = InUse, 0x0002 = Directory</summary>
         internal ushort Flags;
         /// <summary>The number of bytes used by the MFT entry.</summary>

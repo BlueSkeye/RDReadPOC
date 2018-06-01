@@ -5,3 +5,141 @@ http://amanda.secured.org/ntfs-mft-record-parsing-parser/
 https://www.writeblocked.org/resources/NTFS_CHEAT_SHEETS.pdf
 http://ultradefrag.sourceforge.net/doc/man/ntfs/NTFS_On_Disk_Structure.pdf
 https://www.dfir.training/windows/mft/338-62-mft-layout/file
+
+First MFT cluster example
+=========================
+000 (000) : 46 49 4C 45 -> Type 'FILE'
+            30 00 -> Usa offset 0x30
+			03 00 -> Usa count 0x03
+			9B 6F A0 04 00 00 00 00 -> Record USN 0x04A06F9B
+010 (016) : 01 00 -> Sequence number 0x01
+            01 00 -> Link count 0x01
+			38 00 -> Attribute offset 0x38
+			01 00 -> Flags InUse
+			98 01 00 00 -> Bytes in use by this entry 0x198
+			00 04 00 00 -> Bytes allocated for this entry.
+020 (032) : 00 00 00 00 00 00 00 00 -> Overflowing entry 0
+			07 00 -> Next attribute number 0x07
+			00 00 00 00 00 00 -> Unknown values
+030 (048) : 04 00 00 00 00 00 00 00 -> Update sequence numbers
+First attribute
+038 (056) : 10 00 00 00 -> Attribute type AttributeStandardInformation
+			60 00 00 00 -> Attribute resident part size 0x60
+040 (064) : 00 -> Non resident false
+            00 -> Name length 0x00
+			18 00 -> Name offset 0x18
+			00 00 -> Flags 0x00
+			00 00 -> Attribute number 0x00
+	Resident attribute part
+			48 00 00 00 -> Value length 0x48
+			18 00 -> Value offset 0x18
+			00 00 -> Flags 0x00
+	AttributeStandardInformation part
+050 (080) : 93 64 8D 9C 4E D9 D0 01 -> Creation time
+			93 64 8D 9C 4E D9 D0 01 -> Change time
+060 (096) : 93 64 8D 9C 4E D9 D0 01 -> Last write time
+			93 64 8D 9C 4E D9 D0 01 -> Last access time
+070 (112) : 06 00 00 00 -> File attributes 0x06
+			00 00 00 00 -> ???
+			00 00 00 00 -> ???
+			00 00 00 00 -> ???
+080 (128) : 00 00 00 00 -> Quota id 0x00
+			00 01 00 00 -> Security id 0x0100
+			00 00 00 00 00 00 00 00 -> Quota charge 0x00
+090 (144) : 00 00 00 00 00 00 00 00 -> Usn 0x00
+Second attribute
+			30 00 00 00 -> Attibute type AttributeFileName
+			68 00 00 00 -> Attribute resident part size 0x68
+0A0 (160) : 00 -> Non resident false
+            00 -> Name length 0x00
+			18 00 -> Name offset 0x18
+			00 00 -> Flags 0x00
+			03 00 -> Attribute number 0x03
+	Resident attribute part
+			4A 00 00 00 -> Value length 0x4A
+			18 00 -> Value offset 0x18
+			01 00 -> Flags 0x01
+	AttributeFileName part
+0B0 (176) : 05 00 00 00 00 00 05 00 -> Directory file reference number 0x05000000000005
+			93 64 8D 9C 4E D9 D0 01 -> Creation time
+0C0 (192) : 93 64 8D 9C 4E D9 D0 01 -> Change time
+			93 64 8D 9C 4E D9 D0 01 -> Last write time
+0D0 (208) : 93 64 8D 9C 4E D9 D0 01 -> Last access time
+			00 40 00 00 00 00 00 00 -> Allocated size 0x0400
+0E0 (224) : 00 40 00 00 00 00 00 00 -> Data size 0x0400
+			06 00 00 00 -> file attributes 0x06
+			00 00 00 00 -> Unknown
+0F0 (240) : 04 -> Name length 0x04
+			03 -> Name type ???
+			24 00 4D 00 46 00 54 00 -> Name $MSFT
+			00 00 00 00 00 00 -> Unused padding according to resident part size field
+Third attribute
+100 (256) : 80 00 00 00 -> Attribute type AttributeData
+			48 00 00 00  -> Attribute resident part size 0x48
+			01 -> Non resident true
+			00 -> Name length 0x00
+			40 00 -> Name offset 0x40
+			00 00 -> Flags 0x00
+			06 00 -> Attribute number 0x06
+	Non resident attribute part
+110 (272) : 00 00 00 00 00 00 00 00 -> Low Vcn
+			3F 00 00 00 00 00 00 00 -> High Vcn 0x3F
+120 (288) : 40 00 -> Run array offset 0x40
+			00 -> Compression unit 0x00
+			00 -> unk
+			00 00 -> unk
+			00 00 00 00 04 00 00 00 -> Allocated size 0x400000000 almost 17GB
+			00 00 00 00 04 00 00 00 -> Data size 0x400000000 almost 17GB
+			00 00 00 00 04 00 00 00 -> Initialized size 0x400000000 almost 17GB
+			Compressed size field not present because compression unit is 0x00
+	AttributeData part : 17GB of data
+			00 00
+140 (320) : 31 40 00 F4 01 00 9C 95 B0 00 00 00 48 00 00 00
+150 (336) : 01 00 40 00 00 00 05 00 00 00 00 00 00 00 00 00
+160 (352) : 01 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00
+170 (368) : 00 20 00 00 00 00 00 00 08 10 00 00 00 00 00 00
+180 (384) : 08 10 00 00 00 00 00 00 21 02 2F 15 00 00 00 00
+190 (400) : FF FF FF FF 00 00 00 00 FF FF FF FF 00 00 00 00
+1A0 (416) : 00 00 04 00 00 00 00 00 31 40 00 F4 01 00 9C 95
+1B0 (432) : B0 00 00 00 50 00 00 00 01 00 40 00 00 00 05 00
+1C0 (448) : 00 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00
+1D0 (464) : 40 00 00 00 00 00 00 00 00 20 00 00 00 00 00 00
+1E0 (480) : 08 10 00 00 00 00 00 00 08 10 00 00 00 00 00 00
+1F0 (496) : 31 01 FF F3 01 11 01 FF 00 F6 D6 82 B0 00 04 00
+200 (512) : FF FF FF FF 00 00 00 00 00 00 00 00 00 00 00 00
+210 (528) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+220 (544) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+230 (560) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+240 (576) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+250 (592) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+260 (608) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+270 (624) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+280 (640) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+290 (656) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2A0 (672) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2B0 (688) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2C0 (704) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2D0 (720) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2E0 (736) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+2F0 (752) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+300 (768) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+310 (784) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+320 (800) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+330 (816) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+340 (832) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+350 (848) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+360 (864) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+370 (880) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+380 (896) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+390 (912) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+3A0 (928) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+3B0 (944) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+3C0 (960) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+3D0 (976) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+3E0 (992) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+3F0 (1008) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 04 00
+
+
+
+
+

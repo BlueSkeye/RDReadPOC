@@ -1,8 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading.Tasks;
+
+using RawDiskReadPOC.NTFS;
 
 namespace RawDiskReadPOC
 {
@@ -45,6 +45,34 @@ namespace RawDiskReadPOC
         internal ulong TotalSectorsCount { get; private set; }
 
         internal ulong VolumeSerialNumber { get; private set; }
+
+        /// <summary>Retrieve and store pointers at system metadata files.</summary>
+        internal unsafe void CaptureMetadataFilePointers()
+        {
+            // Start at $MFT LBA.
+            ulong currentRecordLBA = StartSector + (MFTClusterNumber * SectorsPerCluster);
+            byte* currentRecord = null;
+            try {
+                for (int mdfIndex = 0; mdfIndex < 16; mdfIndex++) {
+                    _metadataFilePointers[mdfIndex] = currentRecordLBA;
+                    // TODO : Not very efficient. We don't always read on cluster boundary.
+                    currentRecord = Manager.Read(currentRecordLBA, SectorsPerCluster, currentRecord);
+                    if (0x454C4946 != *((uint*)currentRecord)) {
+                        // We expect a 'FILE' NTFS record here.
+                        throw new NotImplementedException();
+                    }
+                    // This is guaranteed to be in the buffer.
+                    NtfsFileRecordHeader* header = (NtfsFileRecordHeader*)currentRecord;
+                    // TODO : This is not guaranteed to be in the buffer, however very very likely.
+                    NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
+                    while(true) {
+                        // Walk attributes
+                        // TODO : find the ending condition.
+                    }
+                }
+            }
+            finally { if (null != currentRecord) { Marshal.FreeCoTaskMem((IntPtr)currentRecord); } }
+        }
 
         internal unsafe void InterpretBootSector()
         {
@@ -94,5 +122,6 @@ namespace RawDiskReadPOC
         }
 
         private static readonly byte[] OEMID = Encoding.ASCII.GetBytes("NTFS    ");
+        private ulong[] _metadataFilePointers = new ulong[16];
     }
 }

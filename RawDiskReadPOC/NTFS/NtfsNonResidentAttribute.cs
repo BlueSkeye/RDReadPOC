@@ -17,7 +17,7 @@ namespace RawDiskReadPOC.NTFS
         /// contains the mappings between VCNs and Logical Cluster Numbers(LCNs).</summary>
         internal ushort RunArrayOffset;
         /// <summary>The compression unit for the attribute expressed as the logarithm to the
-        /// base two of the number of clusters in a compression unit.If CompressionUnit is zero,
+        /// base two of the number of clusters in a compression unit. If CompressionUnit is zero,
         /// the attribute is not compressed.</summary>
         internal byte CompressionUnit;
         internal byte Alignment1;
@@ -29,7 +29,7 @@ namespace RawDiskReadPOC.NTFS
         internal ulong DataSize;
         /// <summary>The size, in bytes, of the initialized portion of the attribute value.</summary>
         internal ulong InitializedSize;
-        /// <summary>The size, in bytes, of the attribute value after compression.This member is only
+        /// <summary>The size, in bytes, of the attribute value after compression. This member is only
         /// present when the attribute is compressed.</summary>
         internal ulong CompressedSize;
     }
