@@ -2,25 +2,12 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 
+using RawDiskReadPOC.NTFS;
+
 namespace RawDiskReadPOC
 {
     public static class Program
     {
-        private static unsafe void DumpFirstSectors(DiskGeometry geometry)
-        {
-            byte* masterBootRecord = null;
-            try {
-                for(uint index = 0; index < 5; index++) {
-                    masterBootRecord = (byte*)geometry.Read(index, 1, masterBootRecord);
-                    Console.WriteLine("---------- Sector {0} ------------------", index);
-                    Helpers.Dump(masterBootRecord, geometry.BytesPerSector);
-                }
-            }
-            finally {
-                if (null != masterBootRecord) { Marshal.FreeCoTaskMem((IntPtr)masterBootRecord); }
-            }
-        }
-
         public static unsafe int Main(string[] args)
         {
             Assembly entryAssembly = Assembly.GetEntryAssembly();
@@ -43,18 +30,27 @@ namespace RawDiskReadPOC
                 PartitionManager partitionManager = new PartitionManager(handle, geometry);
                 partitionManager.Discover();
                 byte* sector = null;
+                byte* mftRecord = null;
                 try {
                     foreach (PartitionManager.PartitionBase partition in partitionManager.EnumeratePartitions()) {
-                        if (partition.Active)
-                        {
+                        if (partition.Active) {
                             NTFSPartition ntfsPartition = partition as NTFSPartition;
                             if (null == ntfsPartition) { throw new NotSupportedException(); }
-                            sector = geometry.Read(ntfsPartition.StartSector, 1, sector);
-                            Helpers.Dump(sector, geometry.BytesPerSector);
+                            ntfsPartition.InterpretBootSector();
+
+                            ulong mftRecordLBA = ntfsPartition.StartSector + (ntfsPartition.MFTClusterNumber * ntfsPartition.SectorsPerCluster);
+                            mftRecord = partitionManager.Read(mftRecordLBA, 2);
+                            NtfsFileRecordHeader* recordHeader = (NtfsFileRecordHeader*)mftRecord;
+                            Helpers.Dump(mftRecord, 2 * geometry.BytesPerSector);
+                            continue;
                         }
+                        // For now we don't interpret nonactive partitions.
                     }
                 }
-                finally { if (null != sector) { Marshal.FreeCoTaskMem((IntPtr)sector); } }
+                finally {
+                    if (null != mftRecord) { Marshal.FreeCoTaskMem((IntPtr)mftRecord); }
+                    if (null != sector) { Marshal.FreeCoTaskMem((IntPtr)sector); }
+                }
                 return 0;
             }
             finally {

@@ -1,0 +1,7 @@
+﻿Best info today for header : http://ultradefrag.sourceforge.net/doc/man/ntfs/NTFS_On_Disk_Structure.pdf
+https://hetmanrecovery.com/recovery_news/ntfs-file-system-structure.htm
+https://pdfs.semanticscholar.org/presentation/0209/570d0f395dd3da03d55ab5ea56214764269e.pdf p69
+http://amanda.secured.org/ntfs-mft-record-parsing-parser/
+https://www.writeblocked.org/resources/NTFS_CHEAT_SHEETS.pdf
+http://ultradefrag.sourceforge.net/doc/man/ntfs/NTFS_On_Disk_Structure.pdf
+https://www.dfir.training/windows/mft/338-62-mft-layout/file

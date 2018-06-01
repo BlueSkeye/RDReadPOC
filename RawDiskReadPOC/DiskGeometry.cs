@@ -51,26 +51,6 @@ namespace RawDiskReadPOC
             return absoluteSectorNumber * this.BytesPerSector;
         }
 
-        internal unsafe byte* Read(ulong logicalBlockAddress, uint count = 1, byte* into = null)
-        {
-            if (null == into) {
-                into = (byte*)Marshal.AllocCoTaskMem((int)(count * this.BytesPerSector));
-            }
-            uint readCount;
-            uint expectedCount = count * this.BytesPerSector;
-            ulong offset = logicalBlockAddress * this.BytesPerSector;
-            if (!Natives.SetFilePointerEx(_hStorage, (long)offset, out offset, Natives.FILE_BEGIN)) {
-                throw new ApplicationException();
-            }
-            if (!Natives.ReadFile(_hStorage, into, expectedCount, out readCount, IntPtr.Zero)) {
-                throw new ApplicationException();
-            }
-            if (readCount != expectedCount) {
-                throw new ApplicationException();
-            }
-            return into;
-        }
-
         [Serializable()]
         private struct DISK_GEOMETRY_EX
         {

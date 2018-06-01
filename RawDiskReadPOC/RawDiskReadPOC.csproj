@@ -53,6 +53,24 @@
     <Compile Include="Helpers.cs" />
     <Compile Include="Natives.cs" />
     <Compile Include="NTFSPartition.cs" />
+    <Compile Include="NTFS\NtfsAttribute.cs" />
+    <Compile Include="NTFS\NtfsAttributeListAttribute.cs" />
+    <Compile Include="NTFS\NtfsAttributeType.cs" />
+    <Compile Include="NTFS\NtfsDirectoryEntry.cs" />
+    <Compile Include="NTFS\NtfsDirectoryIndex.cs" />
+    <Compile Include="NTFS\NtfsEAAttribute.cs" />
+    <Compile Include="NTFS\NtfsEAInformation.cs" />
+    <Compile Include="NTFS\NtfsFileNameAttribute.cs" />
+    <Compile Include="NTFS\NtfsFileRecordHeader.cs" />
+    <Compile Include="NTFS\NtfsIndexAllocationAttribute.cs" />
+    <Compile Include="NTFS\NtfsNonResidentAttribute.cs" />
+    <Compile Include="NTFS\NtfsRecordHeader.cs" />
+    <Compile Include="NTFS\NtfsResidentAttribute.cs" />
+    <Compile Include="NTFS\NtfsRootIndexAttribute.cs" />
+    <Compile Include="NTFS\NtfsStandardInformationAttribute.cs" />
+    <Compile Include="NTFS\NtfsVolumeInformationAttribute.cs" />
+    <Compile Include="NTFS\ObjectIdAttribute.cs" />
+    <Compile Include="NTFS\ReparsePointAttribute.cs" />
     <Compile Include="PartitionManager.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -63,6 +81,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="Documentation.txt" />
+    <Content Include="NTFS\NTFSKB.txt" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

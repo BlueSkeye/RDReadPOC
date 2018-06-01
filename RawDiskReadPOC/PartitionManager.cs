@@ -12,17 +12,19 @@ namespace RawDiskReadPOC
             _rawHandle = rawHandle;
         }
 
+        internal DiskGeometry Geometry { get { return _geometry; } }
+
         /// <summary>Discover partitions</summary>
         internal unsafe void Discover()
         {
             byte* masterBootRecord = null;
             try {
-                masterBootRecord = (byte*)_geometry.Read(0);
+                masterBootRecord = (byte*)this.Read(0);
                 if (0x55 != masterBootRecord[510]) { throw new ApplicationException(); }
                 if (0xAA != masterBootRecord[511]) { throw new ApplicationException(); }
                 // From http://thestarman.pcministry.com/asm/mbr/PartTables.htm
                 for (uint partitionIndex = 0; partitionIndex < 4; partitionIndex++) {
-                    PartitionBase newPartition = PartitionBase.Create(masterBootRecord, 446 + (16 * partitionIndex));
+                    PartitionBase newPartition = PartitionBase.Create(this, masterBootRecord, 446 + (16 * partitionIndex));
                     if (null != newPartition) {
                         _partitions.Add(newPartition);
                     }
@@ -40,6 +42,27 @@ namespace RawDiskReadPOC
             foreach(PartitionBase item in _partitions) { yield return item; }
         }
 
+        internal unsafe byte* Read(ulong logicalBlockAddress, uint count = 1, byte* into = null)
+        {
+            uint bytesPerSector = _geometry.BytesPerSector;
+            if (null == into) {
+                into = (byte*)Marshal.AllocCoTaskMem((int)(count * bytesPerSector));
+            }
+            uint readCount;
+            uint expectedCount = count * bytesPerSector;
+            ulong offset = logicalBlockAddress * bytesPerSector;
+            if (!Natives.SetFilePointerEx(_rawHandle, (long)offset, out offset, Natives.FILE_BEGIN)) {
+                throw new ApplicationException();
+            }
+            if (!Natives.ReadFile(_rawHandle, into, expectedCount, out readCount, IntPtr.Zero)) {
+                throw new ApplicationException();
+            }
+            if (readCount != expectedCount) {
+                throw new ApplicationException();
+            }
+            return into;
+        }
+
         private DiskGeometry _geometry;
         private List<PartitionBase> _partitions = new List<PartitionBase>();
         private IntPtr _rawHandle;
@@ -54,12 +77,15 @@ namespace RawDiskReadPOC
 
             internal bool Active { get; private set; }
 
+            internal PartitionManager Manager { get; private set; }
+
             internal uint SectorCount { get; private set; }
 
             internal uint StartSector { get; private set; }
 
-            internal static unsafe PartitionBase Create(byte* buffer, uint offset)
+            internal static unsafe PartitionBase Create(PartitionManager manager, byte* buffer, uint offset)
             {
+                if (null == manager) { throw new ArgumentNullException(); }
                 byte partitionType = buffer[offset + 4];
                 bool hiddenPartition = false;
                 bool activePartition = (0x80 == buffer[offset]);
@@ -90,6 +116,7 @@ namespace RawDiskReadPOC
                 }
                 if (null != result) {
                     result.Active = activePartition;
+                    result.Manager = manager;
                 }
                 return result;
             }
