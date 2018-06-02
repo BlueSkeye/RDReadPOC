@@ -1,7 +1,7 @@
 ﻿
 namespace RawDiskReadPOC.NTFS
 {
-    internal class NtfsNonResidentAttribute
+    internal struct NtfsNonResidentAttribute
     {
         /// <summary>An ATTRIBUTE structure containing members common to resident and
         /// nonresident attributes.</summary>

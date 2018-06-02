@@ -75,7 +75,7 @@ Second attribute
 			00 00 00 00 00 00 -> Unused padding according to resident part size field
 Third attribute
 100 (256) : 80 00 00 00 -> Attribute type AttributeData
-			48 00 00 00  -> Attribute resident part size 0x48
+			48 00 00 00 -> Attribute resident part size 0x48
 			01 -> Non resident true
 			00 -> Name length 0x00
 			40 00 -> Name offset 0x40
@@ -92,14 +92,35 @@ Third attribute
 			00 00 00 00 04 00 00 00 -> Data size 0x400000000 almost 17GB
 			00 00 00 00 04 00 00 00 -> Initialized size 0x400000000 almost 17GB
 			Compressed size field not present because compression unit is 0x00
-	AttributeData part : 17GB of data
 			00 00
-140 (320) : 31 40 00 F4 01 00 9C 95 B0 00 00 00 48 00 00 00
-150 (336) : 01 00 40 00 00 00 05 00 00 00 00 00 00 00 00 00
-160 (352) : 01 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00
-170 (368) : 00 20 00 00 00 00 00 00 08 10 00 00 00 00 00 00
-180 (384) : 08 10 00 00 00 00 00 00 21 02 2F 15 00 00 00 00
-190 (400) : FF FF FF FF 00 00 00 00 FF FF FF FF 00 00 00 00
+140 (320) : 31 40 00 F4 01 00 9C 95 -> Run array offset ???
+Fourth attribute
+			B0 00 00 00 -> Attribute type AttributeBitmap
+			48 00 00 00 -> Attribute resident part size 0x48
+150 (336) : 01 -> Non resident true
+			00 -> Name length 0x00
+			40 00 -> Name offset 0x40
+			00 00 -> Flags 0x00
+			05 00 -> Attribute number 0x05
+	Non resident attribute part
+			00 00 00 00 00 00 00 00 -> Low Vcn
+			01 00 00 00 00 00 00 00 -> High Vcn 0x01
+			40 00 -> Run array offset 0x40
+			00 -> Compression unit 0x00
+			00 -> unk
+			00 00 -> unk
+			00 00 00 20 00 00 00 00 -> Allocated size 0x20000000
+			00 00 08 10 00 00 00 00 -> Data size 0x10080000
+			00 00 08 10 00 00 00 00 -> Initialized size 0x10080000
+			Compressed size field not present because compression unit is 0x00
+			00 00
+			21 02 2F 15 00 00 00 00 -> Run array offset ???
+Fifth attribute
+190 (400) : FF FF FF FF -> Attribute type 
+			00 00 00 00 -> Attribute resident part size 0x00
+Sixth attribute
+			FF FF FF FF -> Attribute type
+			00 00 00 00 -> Attribute resident part size 0x00
 1A0 (416) : 00 00 04 00 00 00 00 00 31 40 00 F4 01 00 9C 95
 1B0 (432) : B0 00 00 00 50 00 00 00 01 00 40 00 00 00 05 00
 1C0 (448) : 00 00 00 00 00 00 00 00 01 00 00 00 00 00 00 00

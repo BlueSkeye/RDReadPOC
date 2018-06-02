@@ -55,20 +55,26 @@ namespace RawDiskReadPOC
             try {
                 for (int mdfIndex = 0; mdfIndex < 16; mdfIndex++) {
                     _metadataFilePointers[mdfIndex] = currentRecordLBA;
-                    // TODO : Not very efficient. We don't always read on cluster boundary.
                     currentRecord = Manager.Read(currentRecordLBA, SectorsPerCluster, currentRecord);
                     if (0x454C4946 != *((uint*)currentRecord)) {
                         // We expect a 'FILE' NTFS record here.
                         throw new NotImplementedException();
                     }
-                    // This is guaranteed to be in the buffer.
                     NtfsFileRecordHeader* header = (NtfsFileRecordHeader*)currentRecord;
-                    // TODO : This is not guaranteed to be in the buffer, however very very likely.
                     NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
-                    while(true) {
-                        // Walk attributes
-                        // TODO : find the ending condition.
+                    // Walk attributes. Technically this is useless. However that let us trace metafile names.
+                    for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
+                        if (NtfsAttributeType.AttributeFileName == currentAttribute->AttributeType) {
+                            NtfsFileNameAttribute* nameAttribute = (NtfsFileNameAttribute*)
+                                ((byte*)currentAttribute + sizeof(NtfsResidentAttribute));
+                            Console.WriteLine(Encoding.Unicode.GetString((byte*)&nameAttribute->Name, nameAttribute->NameLength * sizeof(char)));
+                        }
+                        currentAttribute = (NtfsAttribute*)((byte*)currentAttribute +
+                            ((NtfsAttributeType.AttributeNone == currentAttribute->AttributeType)
+                                ? sizeof(ulong)
+                                : currentAttribute->Length));
                     }
+                    currentRecordLBA += header->BytesAllocated / BytesPerSector;
                 }
             }
             finally { if (null != currentRecord) { Marshal.FreeCoTaskMem((IntPtr)currentRecord); } }

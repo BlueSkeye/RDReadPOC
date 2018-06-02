@@ -3,7 +3,7 @@ namespace RawDiskReadPOC.NTFS
 {
     /// <summary></summary>
     /// <remarks>The filename attribute is always resident.</remarks>
-    internal class NtfsFileNameAttribute
+    internal struct NtfsFileNameAttribute
     {
         /// <summary>The file reference number of the directory in which the filename is entered</summary>
         internal ulong DirectoryFileReferenceNumber;
