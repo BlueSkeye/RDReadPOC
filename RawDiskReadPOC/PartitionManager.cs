@@ -44,11 +44,16 @@ namespace RawDiskReadPOC
 
         internal unsafe byte* Read(ulong logicalBlockAddress, uint count = 1, byte* into = null)
         {
+            uint trash;
+            return Read(logicalBlockAddress, out trash, count, into);
+        }
+
+        internal unsafe byte* Read(ulong logicalBlockAddress, out uint readCount, uint count = 1, byte* into = null)
+        {
             uint bytesPerSector = _geometry.BytesPerSector;
             if (null == into) {
                 into = (byte*)Marshal.AllocCoTaskMem((int)(count * bytesPerSector));
             }
-            uint readCount;
             uint expectedCount = count * bytesPerSector;
             ulong offset = logicalBlockAddress * bytesPerSector;
             if (!Natives.SetFilePointerEx(_rawHandle, (long)offset, out offset, Natives.FILE_BEGIN)) {

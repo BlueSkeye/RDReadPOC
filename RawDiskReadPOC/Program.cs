@@ -2,12 +2,47 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-using RawDiskReadPOC.NTFS;
-
 namespace RawDiskReadPOC
 {
     public static class Program
     {
+        private static unsafe void CountFiles()
+        {
+            foreach (PartitionManager.PartitionBase partition in _partitionManager.EnumeratePartitions()) {
+                NTFSPartition ntfsPartition = partition as NTFSPartition;
+                if (null == ntfsPartition) { throw new NotSupportedException(); }
+                if (!partition.Active) { continue; }
+                ulong filesCount = ntfsPartition.CountFiles();
+            }
+        }
+
+        private static unsafe void FindFile(string filename)
+        {
+            throw new NotImplementedException();
+        }
+
+        private static unsafe void InterpretActivePartitions()
+        {
+            byte* sector = null;
+            byte* mftRecord = null;
+            try {
+                foreach (PartitionManager.PartitionBase partition in _partitionManager.EnumeratePartitions()) {
+                    if (!partition.Active) { continue; }
+                    NTFSPartition ntfsPartition = partition as NTFSPartition;
+                    if (null == ntfsPartition) { throw new NotSupportedException(); }
+                    ntfsPartition.InterpretBootSector();
+                    ntfsPartition.CaptureMetadataFilePointers();
+                    ntfsPartition.MonitorBadClusters();
+                    // ntfsPartition.DumpFirstFileNames();
+                }
+                return;
+            }
+            finally {
+                if (null != mftRecord) { Marshal.FreeCoTaskMem((IntPtr)mftRecord); }
+                if (null != sector) { Marshal.FreeCoTaskMem((IntPtr)sector); }
+            }
+        }
+
         public static unsafe int Main(string[] args)
         {
             Assembly entryAssembly = Assembly.GetEntryAssembly();
@@ -27,32 +62,11 @@ namespace RawDiskReadPOC
                     return 1;
                 }
                 geometry.Acquire(handle);
-                PartitionManager partitionManager = new PartitionManager(handle, geometry);
-                partitionManager.Discover();
-                byte* sector = null;
-                byte* mftRecord = null;
-                try {
-                    foreach (PartitionManager.PartitionBase partition in partitionManager.EnumeratePartitions()) {
-                        if (partition.Active) {
-                            NTFSPartition ntfsPartition = partition as NTFSPartition;
-                            if (null == ntfsPartition) { throw new NotSupportedException(); }
-                            ntfsPartition.InterpretBootSector();
-                            ntfsPartition.CaptureMetadataFilePointers();
-
-                            // Read a whole cluster.
-                            ulong mftRecordLBA = ntfsPartition.StartSector + (ntfsPartition.MFTClusterNumber * ntfsPartition.SectorsPerCluster);
-                            mftRecord = partitionManager.Read(mftRecordLBA, ntfsPartition.SectorsPerCluster);
-                            NtfsFileRecordHeader* recordHeader = (NtfsFileRecordHeader*)mftRecord;
-                            Helpers.Dump(mftRecord, 2 * geometry.BytesPerSector);
-                            continue;
-                        }
-                        // For now we don't interpret nonactive partitions.
-                    }
-                }
-                finally {
-                    if (null != mftRecord) { Marshal.FreeCoTaskMem((IntPtr)mftRecord); }
-                    if (null != sector) { Marshal.FreeCoTaskMem((IntPtr)sector); }
-                }
+                _partitionManager = new PartitionManager(handle, geometry);
+                _partitionManager.Discover();
+                InterpretActivePartitions();
+                //CountFiles();
+                //FindFile(@"C:\Hyberfil.sys");
                 return 0;
             }
             finally {
@@ -62,5 +76,7 @@ namespace RawDiskReadPOC
                 }
             }
         }
+
+        private static PartitionManager _partitionManager;
     }
 }

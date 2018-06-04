@@ -18,7 +18,7 @@ namespace RawDiskReadPOC.NTFS
         AttributeEAInformation = 0xD0,
         AttributeEA = 0xE0,
         AttributePropertySet = 0xF0,
-        AttributeNone = 0xFF,
-        AttributeLoggedUtilityStream = 0x100
+        AttributeLoggedUtilityStream = 0x100,
+        AttributeNone = 0xFFFFFFFF,
     }
 }

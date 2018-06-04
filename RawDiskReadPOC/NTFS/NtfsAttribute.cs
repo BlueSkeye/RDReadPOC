@@ -1,4 +1,5 @@
-﻿
+﻿using System.Text;
+
 namespace RawDiskReadPOC.NTFS
 {
     internal struct NtfsAttribute
@@ -18,5 +19,17 @@ namespace RawDiskReadPOC.NTFS
         internal ushort Flags;
         /// <summary>A numeric identifier for the instance of the attribute.</summary>
         internal ushort AttributeNumber;
+
+        /// <summary>Returns attribute name or a null reference if the name is undefined.</summary>
+        internal unsafe string Name
+        {
+            get
+            {
+                if (0 == NameLength) { return null; }
+                fixed(NtfsAttribute* ptr = &this) {
+                    return Encoding.Unicode.GetString((byte*)ptr + NameOffset, sizeof(char) * NameLength);
+                }
+            }
+        }
     }
 }

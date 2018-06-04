@@ -69,6 +69,7 @@
     <Compile Include="NTFS\NtfsRootIndexAttribute.cs" />
     <Compile Include="NTFS\NtfsStandardInformationAttribute.cs" />
     <Compile Include="NTFS\NtfsVolumeInformationAttribute.cs" />
+    <Compile Include="NTFS\NtfsWellKnownMetadataFiles.cs" />
     <Compile Include="NTFS\ObjectIdAttribute.cs" />
     <Compile Include="NTFS\ReparsePointAttribute.cs" />
     <Compile Include="PartitionManager.cs" />
