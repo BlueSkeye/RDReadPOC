@@ -1,4 +1,5 @@
-﻿
+﻿using System;
+
 namespace RawDiskReadPOC.NTFS
 {
     internal struct NtfsNonResidentAttribute
@@ -32,5 +33,48 @@ namespace RawDiskReadPOC.NTFS
         /// <summary>The size, in bytes, of the attribute value after compression. This member is only
         /// present when the attribute is compressed.</summary>
         internal ulong CompressedSize;
+
+        internal unsafe void DecodeRunArray()
+        {
+            fixed (NtfsNonResidentAttribute* pAttribute = &this) {
+                ulong previousRunLCN = 0;
+                byte* pDecodedByte = ((byte*)pAttribute) + pAttribute->RunArrayOffset;
+                Helpers.Dump(pDecodedByte, 64);
+                while (true) {
+                    byte headerByte = *(pDecodedByte++);
+                    if (0 == headerByte) { break; }
+                    byte lengthBytesCount = (byte)(headerByte & 0x0F);
+                    byte offsetLength = (byte)((headerByte & 0xF0) >> 4);
+                    if (offsetLength > sizeof(ulong)) { throw new NotSupportedException(); }
+                    ulong length = 0;
+                    ulong thisRunLCN = 0;
+                    // TODO : Inefficient decoding. Find something better.
+                    for (int index = 0; index < lengthBytesCount; index++) {
+                        length += (ulong)((*(pDecodedByte++)) << (8 * index));
+                    }
+
+                    int shifting = ((sizeof(ulong) - offsetLength)) * 8;
+                    ulong rawValue = *((ulong*)pDecodedByte);
+                    ulong captured = (*((ulong*)pDecodedByte)) << shifting;
+                    long relativeOffset = ((long)captured >> shifting);
+                    pDecodedByte += offsetLength;
+
+                    // TODO : Inefficient addition. Find something better.
+                    if (0 <= relativeOffset) {
+                        thisRunLCN = previousRunLCN + (ulong)relativeOffset;
+                    }
+                    else {
+                        thisRunLCN = previousRunLCN - (ulong)(-relativeOffset);
+                    }
+
+                    if (0 == thisRunLCN) {
+                        // Sparse run.
+                        throw new NotImplementedException();
+                    }
+                    Console.WriteLine("L={0} LCN={1:X8}", length, thisRunLCN);
+                    previousRunLCN = thisRunLCN;
+                }
+            }
+        }
     }
 }

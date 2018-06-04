@@ -33,6 +33,7 @@ namespace RawDiskReadPOC
                     ntfsPartition.InterpretBootSector();
                     ntfsPartition.CaptureMetadataFilePointers();
                     ntfsPartition.MonitorBadClusters();
+                    ntfsPartition.ReadBitmap();
                     // ntfsPartition.DumpFirstFileNames();
                 }
                 return;

@@ -222,6 +222,47 @@ namespace RawDiskReadPOC
             // TODO : Implement periodic polling.
         }
 
+        /// <summary>For testing purpose only. No real use until now.</summary>
+        internal unsafe void ReadBitmap()
+        {
+            byte* buffer = null;
+            uint bufferSize = 0;
+            ulong clusterSize = Manager.Geometry.BytesPerSector * SectorsPerCluster;
+            ulong currentRecordLBA =
+                _metadataFilePointers[(int)NtfsWellKnownMetadataFiles.Bitmap];
+            NtfsFileRecordHeader* header = null;
+            uint readOpCount = 0;
+            try {
+                buffer = Manager.Read(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
+                readOpCount++;
+                header = (NtfsFileRecordHeader*)buffer;
+                if (FileRecordMarker != header->Ntfs.Type) {
+                    // We expect a 'FILE' NTFS record here.
+                    throw new NotImplementedException();
+                }
+                NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
+                // Walk attributes.
+                for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
+                    if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
+                    if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
+                    if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
+                    NtfsNonResidentAttribute* nonResident = (0 == currentAttribute->Nonresident)
+                        ? null
+                        : (NtfsNonResidentAttribute*)currentAttribute;
+                    if (null != nonResident) {
+                        nonResident->DecodeRunArray();
+                    }
+                    currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
+                }
+                header = (NtfsFileRecordHeader*)((byte*)header + header->BytesAllocated);
+                if (bufferSize <= ((byte*)header - buffer)) {
+                    header = null;
+                    currentRecordLBA += SectorsPerCluster;
+                }
+            }
+            finally { if (null != buffer) { Marshal.FreeCoTaskMem((IntPtr)buffer); } }
+        }
+
         internal unsafe void UpdateBadClustersMap()
         {
             byte* buffer = null;
