@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.IO;
 
 namespace RawDiskReadPOC.NTFS
 {
@@ -34,8 +36,12 @@ namespace RawDiskReadPOC.NTFS
         /// present when the attribute is compressed.</summary>
         internal ulong CompressedSize;
 
-        internal unsafe void DecodeRunArray()
+        /// <summary>Returns an ordered set of items each of which describes a range of adjacent logical
+        /// clusters and the logical number of the first cluster in the range.</summary>
+        /// <returns></returns>
+        internal unsafe List<LogicalChunk> DecodeRunArray()
         {
+            List<LogicalChunk> chunks = new List<LogicalChunk>();
             fixed (NtfsNonResidentAttribute* pAttribute = &this) {
                 ulong previousRunLCN = 0;
                 byte* pDecodedByte = ((byte*)pAttribute) + pAttribute->RunArrayOffset;
@@ -71,10 +77,142 @@ namespace RawDiskReadPOC.NTFS
                         // Sparse run.
                         throw new NotImplementedException();
                     }
-                    Console.WriteLine("L={0} LCN={1:X8}", length, thisRunLCN);
+                    chunks.Add(new LogicalChunk() {
+                        ClustersCount = length,
+                        FirstLogicalClusterNumber = thisRunLCN
+                    });
                     previousRunLCN = thisRunLCN;
                 }
+                return chunks;
             }
+        }
+
+        /// <summary>Open a data stream on the data part of this attribute.</summary>
+        /// <param name="partition">The partition this attribute is located in. This parameter is
+        /// used for reading the underlying media.</param>
+        /// <param name="chunks">Optional parameter.</param>
+        /// <returns></returns>
+        internal Stream OpenDataStream(NTFSPartition partition, List<LogicalChunk> chunks = null)
+        {
+            if (null == partition) { throw new ArgumentNullException(); }
+            if (null == chunks) { chunks = DecodeRunArray(); }
+            throw new NotImplementedException();
+        }
+
+        internal class LogicalChunk
+        {
+            internal ulong ClustersCount;
+            internal ulong FirstLogicalClusterNumber;
+
+            public override string ToString()
+            {
+                return string.Format("L={0} LCN={1:X8}", ClustersCount, FirstLogicalClusterNumber);
+
+            }
+        }
+
+        private class NonResidentDataStream : Stream
+        {
+            internal NonResidentDataStream(NTFSPartition partition, List<LogicalChunk> chunks)
+            {
+                _partition = partition ?? throw new InvalidOperationException();
+                _chunks = chunks ?? throw new InvalidOperationException();
+                _chunkEnumerator = _chunks.GetEnumerator();
+                // Optimization.
+                _clusterSize = partition.ClusterSize;
+            }
+
+            public override long Length => throw new NotImplementedException();
+
+            public override bool CanRead
+            {
+                get { return true; }
+            }
+
+            public override bool CanSeek
+            {
+                get { return false; }
+            }
+
+            public override bool CanWrite
+            {
+                get { return false; }
+            }
+
+            public override long Position
+            {
+                get
+                {
+                    return _position;
+                }
+                set => throw new NotSupportedException();
+            }
+
+            public override void Flush()
+            {
+                throw new NotImplementedException();
+            }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                // Arguments validation.
+                if (null == buffer) { throw new ArgumentNullException(); }
+                if (0 > offset) { throw new ArgumentOutOfRangeException(); }
+                if (0 > count) { throw new ArgumentOutOfRangeException(); }
+                if ((buffer.Length - offset) < count) { throw new ArgumentException(); }
+
+                // Processing
+                if (null == _localBuffer) { _localBuffer = new byte[BUFFER_SIZE]; }
+                ulong remainingExpectedBytes = (ulong)count;
+                int result = 0;
+                while (0 < remainingExpectedBytes) {
+                    if (null == _currentChunk) {
+                        if (!_chunkEnumerator.MoveNext()) { return result; }
+                        _currentChunk = _chunkEnumerator.Current;
+                        _currentChunkClusterIndex = 0;
+                        _currentChunkIndexedClusterOffset = 0;
+                        _currentChunkRemainingBytesCount = _clusterSize * _currentChunk.ClustersCount;
+                    }
+                    ulong readCount = remainingExpectedBytes;
+                    if (_currentChunkRemainingBytesCount < remainingExpectedBytes) {
+                        readCount = _currentChunkRemainingBytesCount;
+                    }
+                    throw new NotImplementedException();
+                }
+                throw new NotImplementedException();
+            }
+
+            public override long Seek(long offset, SeekOrigin origin)
+            {
+                throw new NotImplementedException();
+            }
+
+            public override void SetLength(long value)
+            {
+                throw new InvalidOperationException();
+            }
+
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                throw new NotImplementedException();
+            }
+
+            private const int BUFFER_SIZE = 64 * 1024;
+            private IEnumerator<LogicalChunk> _chunkEnumerator;
+            private List<LogicalChunk> _chunks;
+            private ulong _clusterSize;
+            private LogicalChunk _currentChunk;
+            /// <summary>Index [0..ClustersCount[ to start reading from.</summary>
+            private ulong _currentChunkClusterIndex;
+            /// <summary>Offset within cluster matching _currentChunkClusterIndex to start
+            /// reading from.</summary>
+            private ulong _currentChunkIndexedClusterOffset;
+            private ulong _currentChunkRemainingBytesCount;
+            private byte[] _localBuffer;
+            private int _localBufferBytesCount;
+            private int _localBufferPosition;
+            private NTFSPartition _partition;
+            private long _position = 0;
         }
     }
 }

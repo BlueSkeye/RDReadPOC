@@ -32,6 +32,7 @@ namespace RawDiskReadPOC
                     if (null == ntfsPartition) { throw new NotSupportedException(); }
                     ntfsPartition.InterpretBootSector();
                     ntfsPartition.CaptureMetadataFilePointers();
+                    ntfsPartition.CountFiles();
                     ntfsPartition.MonitorBadClusters();
                     ntfsPartition.ReadBitmap();
                     // ntfsPartition.DumpFirstFileNames();
