@@ -134,7 +134,7 @@ namespace RawDiskReadPOC
                 uint readOpCount = 0;
                 for (int fileIndex = 0; fileIndex < 1024; fileIndex++) {
                     if (null == header) {
-                        buffer = Manager.Read(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
+                        buffer = Manager.ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
                         readOpCount++;
                         header = (NtfsFileRecordHeader*)buffer;
                     }
@@ -275,7 +275,7 @@ namespace RawDiskReadPOC
             NtfsFileRecordHeader* header = null;
             uint readOpCount = 0;
             try {
-                buffer = Manager.Read(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
+                buffer = Manager.ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
                 readOpCount++;
                 header = (NtfsFileRecordHeader*)buffer;
                 if (FileRecordMarker != header->Ntfs.Type) {
@@ -315,7 +315,7 @@ namespace RawDiskReadPOC
             NtfsFileRecordHeader* header = null;
             uint readOpCount = 0;
             try {
-                buffer = Manager.Read(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
+                buffer = Manager.ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
                 readOpCount++;
                 header = (NtfsFileRecordHeader*)buffer;
                 if (FileRecordMarker != header->Ntfs.Type) {
