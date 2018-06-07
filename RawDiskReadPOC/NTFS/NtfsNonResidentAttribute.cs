@@ -11,7 +11,7 @@ namespace RawDiskReadPOC.NTFS
         /// nonresident attributes.</summary>
         internal NtfsAttribute Attribute;
         /// <summary>The lowest valid Virtual Cluster Number (VCN) of this portion of the
-        /// attribute value. Unless the attribute value is very fragmented(to the extent
+        /// attribute value. Unless the attribute value is very fragmentedc(to the extent
         /// that an attribute list is needed to describe it), there is only one portion of
         /// the attribute value, and the value of LowVcn is zero.</summary>
         internal ulong LowVcn;
@@ -96,8 +96,9 @@ namespace RawDiskReadPOC.NTFS
         internal Stream OpenDataStream(NTFSPartition partition, List<LogicalChunk> chunks = null)
         {
             if (null == partition) { throw new ArgumentNullException(); }
+            if (0 != this.CompressionUnit) { throw new NotSupportedException(); }
             if (null == chunks) { chunks = DecodeRunArray(); }
-            throw new NotImplementedException();
+            return new NonResidentDataStream(partition, chunks);
         }
 
         internal class LogicalChunk
@@ -170,6 +171,7 @@ namespace RawDiskReadPOC.NTFS
                 if (0 > count) { throw new ArgumentOutOfRangeException(); }
                 if ((buffer.Length - offset) < count) { throw new ArgumentException(); }
                 int result = 0;
+                uint sectorsPerCluster = _partition.SectorsPerCluster;
                 fixed (byte* pBuffer = buffer) {
                     // Initialization
                     if (null == _localBuffer) {
@@ -182,13 +184,13 @@ namespace RawDiskReadPOC.NTFS
                         if (_localBufferPosition >= _localBufferBytesCount) {
                             // No more available data in local buffer. Must trigger another read from
                             // underlying partition.
-                            ulong readFromBlock;
+                            ulong readFromCluster;
                             uint readBlocksCount;
                             ulong remainingBlocksInChunk;
 
-                            if (_currentChunkClusterIndex < _currentChunk.ClustersCount) {
+                            if ((null != _currentChunk) && (_currentChunkClusterIndex < _currentChunk.ClustersCount)) {
                                 // Some clusters remaining in current chunk.
-                                readFromBlock = _currentChunkClusterIndex + _currentChunk.FirstLogicalClusterNumber;
+                                readFromCluster = _currentChunkClusterIndex + _currentChunk.FirstLogicalClusterNumber;
                             }
                             else {
                                 // Need to go on with next chunk.
@@ -200,22 +202,27 @@ namespace RawDiskReadPOC.NTFS
                                 _currentChunkClusterIndex = 0;
                                 _currentChunkRemainingBytesCount = _clusterSize * _currentChunk.ClustersCount;
                                 _partition.Manager.SeekTo(
-                                    _currentChunk.FirstLogicalClusterNumber * _partition.SectorsPerCluster);
-                                readFromBlock = _currentChunk.FirstLogicalClusterNumber;
+                                    _currentChunk.FirstLogicalClusterNumber * sectorsPerCluster);
+                                readFromCluster = _currentChunk.FirstLogicalClusterNumber;
                             }
                             ulong remainingClustersInChunk = _currentChunk.ClustersCount - _currentChunkClusterIndex;
-                            remainingBlocksInChunk = remainingClustersInChunk * _partition.SectorsPerCluster;
+                            remainingBlocksInChunk = remainingClustersInChunk * sectorsPerCluster;
 
                             // How many blocks should we read ?
                             readBlocksCount = (uint)MAX_READ_BLOCKS;
                             if (readBlocksCount > remainingBlocksInChunk) {
                                 readBlocksCount = (uint)remainingBlocksInChunk;
                             }
+                            // Invariant control.
+                            if (0 != (readBlocksCount % sectorsPerCluster)) {
+                                throw new ApplicationException();
+                            }
                             // Perform read and reinitialize some internal values.
+                            ulong readFromBlock = readFromCluster * sectorsPerCluster;
                             _partition.Manager.ReadBlocks(readFromBlock, out _localBufferBytesCount,
                                 readBlocksCount, _localBuffer);
                             _localBufferPosition = 0;
-                            _currentChunkClusterIndex += (readBlocksCount / _partition.SectorsPerCluster);
+                            _currentChunkClusterIndex += (readBlocksCount / sectorsPerCluster);
                         }
                         ulong readCount = remainingExpectedBytes;
                         if (_currentChunkRemainingBytesCount < remainingExpectedBytes) {
@@ -227,19 +234,28 @@ namespace RawDiskReadPOC.NTFS
                         ulong quickMoveCount = readCount / 8;
                         ulong* pQuickBufferTo = (ulong*)pBuffer;
                         ulong* pQuickBufferFrom = (ulong*)(_localBuffer + _localBufferPosition);
-                        while (0 < quickMoveCount--) {
+                        while (0 < quickMoveCount) {
                             *(pQuickBufferTo++) = *(pQuickBufferFrom++);
+                            quickMoveCount--;
                         }
                         readCount -= (8 * quickMoveCount);
                         while (0 < readCount) {
                             *((byte*)pQuickBufferTo++) = *((byte*)pQuickBufferFrom++);
+                            readCount--;
                         }
+                        // Check invariant
+                        if (0 != readCount) { throw new ApplicationException(); }
 
                         // Adjust values for next round.
-                        _currentChunkRemainingBytesCount -= readCount;
-                        _localBufferPosition += (int)readCount;
-                        remainingExpectedBytes -= readCount;
-                        result += (int)readCount;
+                        _currentChunkRemainingBytesCount -= _localBufferBytesCount;
+                        ulong effectiveRead = (remainingExpectedBytes < _localBufferBytesCount)
+                            ? remainingExpectedBytes
+                            : _localBufferBytesCount;
+                        // Invariant check.
+                        if (int.MaxValue < effectiveRead) { throw new ApplicationException(); }
+                        _localBufferPosition += (int)effectiveRead;
+                        remainingExpectedBytes -= effectiveRead;
+                        result += (int)effectiveRead;
                     }
                 }
                 return result;

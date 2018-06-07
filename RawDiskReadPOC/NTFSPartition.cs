@@ -22,9 +22,11 @@ namespace RawDiskReadPOC
             Hidden = hidden;
         }
 
+        internal unsafe delegate bool RecordAttributeEnumeratorCallbackDelegate(NtfsAttribute* value);
+
         internal ulong this[string name]
         {
-            get { return _metadataFilesByName[name]; }
+            get { return _metadataFilesLBAByName[name]; }
         }
 
         internal uint BytesPerSector { get; private set; }
@@ -66,7 +68,7 @@ namespace RawDiskReadPOC
             byte* currentRecord = null;
             try {
                 for (int mdfIndex = 0; mdfIndex < 16; mdfIndex++) {
-                    _metadataFilePointers[mdfIndex] = currentRecordLBA;
+                    _metadataFileLBAs[mdfIndex] = currentRecordLBA;
                     currentRecord = Manager.Read(currentRecordLBA, SectorsPerCluster, currentRecord);
                     NtfsFileRecordHeader* header = (NtfsFileRecordHeader*)currentRecord;
                     if (FileRecordMarker != header->Ntfs.Type) {
@@ -80,7 +82,7 @@ namespace RawDiskReadPOC
                             NtfsFileNameAttribute* nameAttribute = (NtfsFileNameAttribute*)
                                 ((byte*)currentAttribute + sizeof(NtfsResidentAttribute));
                             string metadataFileName = Encoding.Unicode.GetString((byte*)&nameAttribute->Name, nameAttribute->NameLength * sizeof(char));
-                            _metadataFilesByName.Add(metadataFileName, currentRecordLBA);
+                            _metadataFilesLBAByName.Add(metadataFileName, currentRecordLBA);
                         }
                         currentAttribute = (NtfsAttribute*)((byte*)currentAttribute +
                             ((NtfsAttributeType.AttributeNone == currentAttribute->AttributeType)
@@ -95,8 +97,17 @@ namespace RawDiskReadPOC
 
         internal unsafe ulong CountFiles()
         {
+            GetBitmapProxy();
             // Start at $MFT LBA.
-            ulong mftLBA = _metadataFilePointers[(int)NtfsWellKnownMetadataFiles.MFT];
+            ulong mftLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.MFT];
+            byte* buffer = null;
+            try {
+                EnumerateRecordAttributes(mftLBA, ref buffer, delegate (NtfsAttribute* found) {
+                    Console.WriteLine(found->AttributeType.ToString());
+                    return true;
+                });
+            }
+            finally { if (null != buffer) { Marshal.FreeCoTaskMem((IntPtr)buffer); } }
             byte* mftRecord = null;
             ulong result = 0;
             try {
@@ -176,14 +187,8 @@ namespace RawDiskReadPOC
             finally { if (null != buffer) { Marshal.FreeCoTaskMem((IntPtr)buffer); } }
         }
 
-        /// <summary>Retrieve the Nth attribute of a given kind from a file record.</summary>
-        /// <param name="recordLBA"></param>
-        /// <param name="kind"></param>
-        /// <param name="buffer"></param>
-        /// <param name="order"></param>
-        /// <returns></returns>
-        internal unsafe NtfsAttribute* GetFileRecordAttribute(ulong recordLBA, NtfsAttributeType kind,
-            ref byte* buffer, uint order = 1)
+        internal unsafe void EnumerateRecordAttributes(ulong recordLBA, ref byte* buffer,
+            RecordAttributeEnumeratorCallbackDelegate callback)
         {
             buffer = Manager.Read(recordLBA, SectorsPerCluster, buffer);
             if (FileRecordMarker != *((uint*)buffer)) {
@@ -200,13 +205,66 @@ namespace RawDiskReadPOC
             for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
                 if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
                 if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
-                if (kind == currentAttribute->AttributeType) {
-                    if (0 == --order) { return currentAttribute; }
-                }
+                if (!callback(currentAttribute)) { return; }
                 if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
                 currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
             }
-            return null;
+            return;
+        }
+
+        /// <summary>This is an optimization. The $Bitmap metadata file is heavily used. We don't want
+        /// to read the header again and again.</summary>
+        internal unsafe void GetBitmapProxy()
+        {
+            ulong bitmapLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.Bitmap];
+            byte* buffer = null;
+            NtfsNonResidentAttribute* bitmapDataAttribute = (NtfsNonResidentAttribute*)
+                GetFileRecordAttribute(bitmapLBA, NtfsAttributeType.AttributeData, ref buffer);
+            Stream bitmapStream = bitmapDataAttribute->OpenDataStream(this);
+            ulong initializedSize = bitmapDataAttribute->InitializedSize;
+            int bitmapBufferLength = 1;
+            byte[] bitmapBuffer = new byte[bitmapBufferLength];
+            int lastReadCount = 0;
+            for (ulong offset = 0; offset < initializedSize; offset += (uint)lastReadCount) {
+                lastReadCount = bitmapStream.Read(bitmapBuffer, 0, bitmapBufferLength);
+                // Invariant check
+                if (bitmapBufferLength < lastReadCount) { throw new ApplicationException(); }
+                // Invariant check
+                if (0 == lastReadCount) { throw new ApplicationException(); }
+                for(int index = 0; index < lastReadCount; index++) {
+                    if (0 != bitmapBuffer[index]) { int trash = 1; }
+                    Console.Write("{0:X2} ", bitmapBuffer[index]);
+                }
+            }
+            int unusedBytes = 0;
+            while (true) {
+                int trashBytes = bitmapStream.Read(bitmapBuffer, 0, bitmapBufferLength);
+                unusedBytes += trashBytes;
+                if (0 == trashBytes) { break; }
+            }
+            throw new NotImplementedException();
+        }
+
+        /// <summary>Retrieve the Nth attribute of a given kind from a file record.</summary>
+        /// <param name="recordLBA"></param>
+        /// <param name="kind"></param>
+        /// <param name="buffer"></param>
+        /// <param name="order"></param>
+        /// <returns></returns>
+        internal unsafe NtfsAttribute* GetFileRecordAttribute(ulong recordLBA, NtfsAttributeType kind,
+            ref byte* buffer, uint order = 1)
+        {
+            NtfsAttribute* result = null;
+            EnumerateRecordAttributes(recordLBA, ref buffer, delegate (NtfsAttribute* found) {
+                if (kind == found->AttributeType) {
+                    if (0 == --order) {
+                        result = found;
+                        return false;
+                    }
+                }
+                return true;
+            });
+            return result;
         }
 
         internal unsafe void InterpretBootSector()
@@ -271,7 +329,7 @@ namespace RawDiskReadPOC
             uint bufferSize = 0;
             ulong clusterSize = Manager.Geometry.BytesPerSector * SectorsPerCluster;
             ulong currentRecordLBA =
-                _metadataFilePointers[(int)NtfsWellKnownMetadataFiles.Bitmap];
+                _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.Bitmap];
             NtfsFileRecordHeader* header = null;
             uint readOpCount = 0;
             try {
@@ -311,7 +369,7 @@ namespace RawDiskReadPOC
             uint bufferSize = 0;
             ulong clusterSize = Manager.Geometry.BytesPerSector * SectorsPerCluster;
             ulong currentRecordLBA =
-                _metadataFilePointers[(int)NtfsWellKnownMetadataFiles.BadClusters];
+                _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.BadClusters];
             NtfsFileRecordHeader* header = null;
             uint readOpCount = 0;
             try {
@@ -347,7 +405,7 @@ namespace RawDiskReadPOC
 
         private static readonly uint FileRecordMarker = 0x454C4946; // FILE
         private static readonly byte[] OEMID = Encoding.ASCII.GetBytes("NTFS    ");
-        private ulong[] _metadataFilePointers = new ulong[16];
-        private Dictionary<string, ulong> _metadataFilesByName = new Dictionary<string, ulong>();
+        private ulong[] _metadataFileLBAs = new ulong[16];
+        private Dictionary<string, ulong> _metadataFilesLBAByName = new Dictionary<string, ulong>();
     }
 }
