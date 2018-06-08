@@ -3,10 +3,10 @@ namespace RawDiskReadPOC.NTFS
 {
     /// <summary>An entry in the MFT consists of a FILE_RECORD_HEADER followed by a sequence of
     /// attributes.</summary>
-    internal struct NtfsFileRecordHeader
+    internal struct NtfsFileRecord
     {
         /// <summary>An NTFS_RECORD_HEADER structure with a Type of ‘FILE’.</summary>
-        internal NtfsRecordHeader Ntfs;
+        internal NtfsRecord Ntfs;
         /// <summary>The number of times that the MFT entry has been reused.</summary>
         internal ushort SequenceNumber;
         /// <summary>The number of directory links to the MFT entry.</summary>

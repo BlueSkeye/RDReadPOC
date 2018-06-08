@@ -102,6 +102,11 @@ namespace RawDiskReadPOC
 
             internal uint SectorCount { get; private set; }
 
+            internal bool ShouldCapture
+            {
+                get { return Active; }
+            }
+
             internal uint StartSector { get; private set; }
 
             internal static unsafe PartitionBase Create(PartitionManager manager, byte* buffer, uint offset)

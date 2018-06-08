@@ -2,7 +2,7 @@
 namespace RawDiskReadPOC.NTFS
 {
     /// <summary>http://ultradefrag.sourceforge.net/doc/man/ntfs/NTFS_On_Disk_Structure.pdf</summary>
-    internal struct NtfsRecordHeader
+    internal struct NtfsRecord
     {
         /// <summary>The type of NTFS record.When the value of Type is considered as a sequence of
         /// four one-byte characters, it normally spells an acronym for the type. Defined values

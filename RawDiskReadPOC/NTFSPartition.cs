@@ -48,6 +48,15 @@ namespace RawDiskReadPOC
 
         internal byte MediaDescriptor { get; private set; }
 
+        internal unsafe NtfsMFTFileRecord* MFT
+        {
+            get
+            {
+                if (null == _mft) { throw new InvalidOperationException(); }
+                return _mft;
+            }
+        }
+
         internal ulong MFTClusterNumber { get; private set; }
 
         internal ulong MFTMirrorClusterNumber { get; private set; }
@@ -70,7 +79,7 @@ namespace RawDiskReadPOC
                 for (int mdfIndex = 0; mdfIndex < 16; mdfIndex++) {
                     _metadataFileLBAs[mdfIndex] = currentRecordLBA;
                     currentRecord = Manager.Read(currentRecordLBA, SectorsPerCluster, currentRecord);
-                    NtfsFileRecordHeader* header = (NtfsFileRecordHeader*)currentRecord;
+                    NtfsFileRecord* header = (NtfsFileRecord*)currentRecord;
                     if (FileRecordMarker != header->Ntfs.Type) {
                         // We expect a 'FILE' NTFS record here.
                         throw new NotImplementedException();
@@ -82,6 +91,11 @@ namespace RawDiskReadPOC
                             NtfsFileNameAttribute* nameAttribute = (NtfsFileNameAttribute*)
                                 ((byte*)currentAttribute + sizeof(NtfsResidentAttribute));
                             string metadataFileName = Encoding.Unicode.GetString((byte*)&nameAttribute->Name, nameAttribute->NameLength * sizeof(char));
+                            if ("$MFT" == metadataFileName) {
+                                // It is not expected for a partition to have more than one $Mft record.
+                                if (null != _mft) { throw new NotSupportedException(); }
+                                _mft = NtfsMFTFileRecord.Create(this, currentRecord);
+                            }
                             _metadataFilesLBAByName.Add(metadataFileName, currentRecordLBA);
                         }
                         currentAttribute = (NtfsAttribute*)((byte*)currentAttribute +
@@ -99,14 +113,14 @@ namespace RawDiskReadPOC
         {
             // Start at $MFT LBA.
             ulong mftLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.MFT];
-            byte* buffer = null;
-            try {
-                EnumerateRecordAttributes(mftLBA, ref buffer, delegate (NtfsAttribute* found) {
-                    Console.WriteLine(found->AttributeType.ToString());
-                    return true;
-                });
-            }
-            finally { if (null != buffer) { Marshal.FreeCoTaskMem((IntPtr)buffer); } }
+            //byte* buffer = null;
+            //try {
+            //    EnumerateRecordAttributes(mftLBA, ref buffer, delegate (NtfsAttribute* found) {
+            //        Console.WriteLine(found->AttributeType.ToString());
+            //        return true;
+            //    });
+            //}
+            //finally { if (null != buffer) { Marshal.FreeCoTaskMem((IntPtr)buffer); } }
             byte* mftRecord = null;
             ulong result = 0;
             try {
@@ -117,12 +131,10 @@ namespace RawDiskReadPOC
                     // Extremely unlikely.
                     throw new NotImplementedException();
                 }
-                NtfsNonResidentAttribute* nrBitmapAttribute = (NtfsNonResidentAttribute*)bitmapAttribute;
-                // Useless due to default parameter value in OpenDataStream
-                // List<NtfsNonResidentAttribute.LogicalChunk> chunks = nrBitmapAttribute->DecodeRunArray();
+                NtfsBitmapAttribute* nrBitmapAttribute = (NtfsBitmapAttribute*)bitmapAttribute;
                 int bitmapBufferLength = 8192;
                 byte[] bitmapBuffer = new byte[bitmapBufferLength];
-                using (Stream dataStream = nrBitmapAttribute->OpenDataStream(this)) {
+                using (Stream dataStream = nrBitmapAttribute->nonResidentHeader.OpenDataStream(this)) {
                     int readCount;
                     while (0 != (readCount = dataStream.Read(bitmapBuffer, 0, bitmapBufferLength))) {
                     }
@@ -140,13 +152,13 @@ namespace RawDiskReadPOC
             try {
                 ulong clusterSize = Manager.Geometry.BytesPerSector * SectorsPerCluster;
                 uint bufferSize = 0;
-                NtfsFileRecordHeader* header = null;
+                NtfsFileRecord* header = null;
                 uint readOpCount = 0;
                 for (int fileIndex = 0; fileIndex < 1024; fileIndex++) {
                     if (null == header) {
                         buffer = Manager.ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
                         readOpCount++;
-                        header = (NtfsFileRecordHeader*)buffer;
+                        header = (NtfsFileRecord*)buffer;
                     }
                     if (0xC6 == fileIndex) {
                         uint bufferOffset = (uint)((byte*)header - buffer);
@@ -176,7 +188,7 @@ namespace RawDiskReadPOC
                         if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
                         currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
                     }
-                    header = (NtfsFileRecordHeader*)((byte*)header + header->BytesAllocated);
+                    header = (NtfsFileRecord*)((byte*)header + header->BytesAllocated);
                     if (bufferSize <= ((byte*)header - buffer)) {
                         header = null;
                         currentRecordLBA += SectorsPerCluster;
@@ -194,7 +206,7 @@ namespace RawDiskReadPOC
                 // We expect a 'FILE' NTFS record here.
                 throw new NotImplementedException();
             }
-            NtfsFileRecordHeader* header = (NtfsFileRecordHeader*)buffer;
+            NtfsFileRecord* header = (NtfsFileRecord*)buffer;
             if (1024 < header->BytesAllocated) {
                 throw new NotImplementedException();
             }
@@ -340,12 +352,12 @@ namespace RawDiskReadPOC
             ulong clusterSize = Manager.Geometry.BytesPerSector * SectorsPerCluster;
             ulong currentRecordLBA =
                 _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.Bitmap];
-            NtfsFileRecordHeader* header = null;
+            NtfsFileRecord* header = null;
             uint readOpCount = 0;
             try {
                 buffer = Manager.ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
                 readOpCount++;
-                header = (NtfsFileRecordHeader*)buffer;
+                header = (NtfsFileRecord*)buffer;
                 if (FileRecordMarker != header->Ntfs.Type) {
                     // We expect a 'FILE' NTFS record here.
                     throw new NotImplementedException();
@@ -364,7 +376,7 @@ namespace RawDiskReadPOC
                     }
                     currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
                 }
-                header = (NtfsFileRecordHeader*)((byte*)header + header->BytesAllocated);
+                header = (NtfsFileRecord*)((byte*)header + header->BytesAllocated);
                 if (bufferSize <= ((byte*)header - buffer)) {
                     header = null;
                     currentRecordLBA += SectorsPerCluster;
@@ -397,12 +409,12 @@ namespace RawDiskReadPOC
             ulong clusterSize = Manager.Geometry.BytesPerSector * SectorsPerCluster;
             ulong currentRecordLBA =
                 _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.BadClusters];
-            NtfsFileRecordHeader* header = null;
+            NtfsFileRecord* header = null;
             uint readOpCount = 0;
             try {
                 buffer = Manager.ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
                 readOpCount++;
-                header = (NtfsFileRecordHeader*)buffer;
+                header = (NtfsFileRecord*)buffer;
                 if (FileRecordMarker != header->Ntfs.Type) {
                     // We expect a 'FILE' NTFS record here.
                     throw new NotImplementedException();
@@ -421,7 +433,7 @@ namespace RawDiskReadPOC
                     }
                     currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
                 }
-                header = (NtfsFileRecordHeader*)((byte*)header + header->BytesAllocated);
+                header = (NtfsFileRecord*)((byte*)header + header->BytesAllocated);
                 if (bufferSize <= ((byte*)header - buffer)) {
                     header = null;
                     currentRecordLBA += SectorsPerCluster;
@@ -433,6 +445,7 @@ namespace RawDiskReadPOC
         private static readonly uint FileRecordMarker = 0x454C4946; // FILE
         private static readonly byte[] OEMID = Encoding.ASCII.GetBytes("NTFS    ");
         private ulong[] _metadataFileLBAs = new ulong[16];
+        private unsafe NtfsMFTFileRecord* _mft;
         private Dictionary<string, ulong> _metadataFilesLBAByName = new Dictionary<string, ulong>();
     }
 }

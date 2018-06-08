@@ -2,6 +2,8 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 
+using RawDiskReadPOC.NTFS;
+
 namespace RawDiskReadPOC
 {
     public static class Program
@@ -27,15 +29,11 @@ namespace RawDiskReadPOC
             byte* mftRecord = null;
             try {
                 foreach (PartitionManager.PartitionBase partition in _partitionManager.EnumeratePartitions()) {
-                    if (!partition.Active) { continue; }
+                    if (!partition.ShouldCapture) { continue; }
                     NTFSPartition ntfsPartition = partition as NTFSPartition;
                     if (null == ntfsPartition) { throw new NotSupportedException(); }
                     ntfsPartition.InterpretBootSector();
                     ntfsPartition.CaptureMetadataFilePointers();
-                    ntfsPartition.CountFiles();
-                    ntfsPartition.MonitorBadClusters();
-                    ntfsPartition.ReadBitmap();
-                    // ntfsPartition.DumpFirstFileNames();
                 }
                 return;
             }
@@ -67,6 +65,16 @@ namespace RawDiskReadPOC
                 _partitionManager = new PartitionManager(handle, geometry);
                 _partitionManager.Discover();
                 InterpretActivePartitions();
+                // Invariant check.
+                NtfsMFTFileRecord.AssertMFTRecordCachingInvariance(_partitionManager);
+                foreach (PartitionManager.PartitionBase partition in _partitionManager.EnumeratePartitions()) {
+                    if (!partition.Active) { continue; }
+                    NTFSPartition ntfsPartition = partition as NTFSPartition;
+                    ntfsPartition.CountFiles();
+                    ntfsPartition.MonitorBadClusters();
+                    ntfsPartition.ReadBitmap();
+                }
+                // ntfsPartition.DumpFirstFileNames();
                 //CountFiles();
                 //FindFile(@"C:\Hyberfil.sys");
                 return 0;

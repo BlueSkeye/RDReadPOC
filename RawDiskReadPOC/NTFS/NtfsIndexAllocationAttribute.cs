@@ -7,7 +7,7 @@ namespace RawDiskReadPOC.NTFS
     internal class NtfsIndexAllocationAttribute
     {
         /// <summary>An NTFS_RECORD_HEADER structure with a Type of ‘INDX’.</summary>
-        internal NtfsRecordHeader Ntfs;
+        internal NtfsRecord Ntfs;
         /// <summary>The VCN of the index block.</summary>
         internal ulong IndexBlockVcn;
         /// <summary>A DIRECTORY_INDEX structure.</summary>
