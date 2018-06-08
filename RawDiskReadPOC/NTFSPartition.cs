@@ -121,6 +121,13 @@ namespace RawDiskReadPOC
             //    });
             //}
             //finally { if (null != buffer) { Marshal.FreeCoTaskMem((IntPtr)buffer); } }
+
+            // TODO :
+            // - Retrieve partition MFT record
+            // - Trigger Bitmap attribute capture
+            // - Read records.
+            // - Count them
+            throw new NotImplementedException();
             byte* mftRecord = null;
             ulong result = 0;
             try {

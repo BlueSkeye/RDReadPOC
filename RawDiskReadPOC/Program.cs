@@ -68,7 +68,7 @@ namespace RawDiskReadPOC
                 // Invariant check.
                 NtfsMFTFileRecord.AssertMFTRecordCachingInvariance(_partitionManager);
                 foreach (PartitionManager.PartitionBase partition in _partitionManager.EnumeratePartitions()) {
-                    if (!partition.Active) { continue; }
+                    if (!partition.ShouldCapture) { continue; }
                     NTFSPartition ntfsPartition = partition as NTFSPartition;
                     ntfsPartition.CountFiles();
                     ntfsPartition.MonitorBadClusters();
