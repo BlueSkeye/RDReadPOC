@@ -97,7 +97,6 @@ namespace RawDiskReadPOC
 
         internal unsafe ulong CountFiles()
         {
-            GetBitmapProxy();
             // Start at $MFT LBA.
             ulong mftLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.MFT];
             byte* buffer = null;
@@ -214,6 +213,7 @@ namespace RawDiskReadPOC
 
         /// <summary>This is an optimization. The $Bitmap metadata file is heavily used. We don't want
         /// to read the header again and again.</summary>
+        /// <remarks>Not currently used in code.</remarks>
         internal unsafe void GetBitmapProxy()
         {
             ulong bitmapLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.Bitmap];
@@ -225,24 +225,34 @@ namespace RawDiskReadPOC
             int bitmapBufferLength = 1;
             byte[] bitmapBuffer = new byte[bitmapBufferLength];
             int lastReadCount = 0;
+            int totalUsedClusters = 0;
+            int totalIndexedClusters = 0;
             for (ulong offset = 0; offset < initializedSize; offset += (uint)lastReadCount) {
                 lastReadCount = bitmapStream.Read(bitmapBuffer, 0, bitmapBufferLength);
                 // Invariant check
                 if (bitmapBufferLength < lastReadCount) { throw new ApplicationException(); }
                 // Invariant check
                 if (0 == lastReadCount) { throw new ApplicationException(); }
-                for(int index = 0; index < lastReadCount; index++) {
-                    if (0 != bitmapBuffer[index]) { int trash = 1; }
-                    Console.Write("{0:X2} ", bitmapBuffer[index]);
+                // For debugging purpose
+                for (int index = 0; index < lastReadCount; index++) {
+                    byte item = bitmapBuffer[index];
+                    for(int bitIndex = 0; bitIndex < 8; bitIndex++) {
+                        totalIndexedClusters++;
+                        if (0 != (item & (byte)(1 << bitIndex))) { totalUsedClusters++; }
+                    }
                 }
             }
+            // For debuging purpose.
             int unusedBytes = 0;
             while (true) {
                 int trashBytes = bitmapStream.Read(bitmapBuffer, 0, bitmapBufferLength);
                 unusedBytes += trashBytes;
                 if (0 == trashBytes) { break; }
             }
-            throw new NotImplementedException();
+            totalIndexedClusters -= (unusedBytes * 8);
+            Console.WriteLine("{0} indexed clusters, {1} in use, {2} free, {3} extra bits.",
+                totalIndexedClusters, totalUsedClusters, totalIndexedClusters - totalUsedClusters,
+                unusedBytes * 8);
         }
 
         /// <summary>Retrieve the Nth attribute of a given kind from a file record.</summary>
@@ -361,6 +371,23 @@ namespace RawDiskReadPOC
                 }
             }
             finally { if (null != buffer) { Marshal.FreeCoTaskMem((IntPtr)buffer); } }
+        }
+
+        internal unsafe byte* Read(ulong logicalBlockAddress, uint count = 1, byte* into = null)
+        {
+            return Manager.Read(logicalBlockAddress + this.StartSector, count, into);
+        }
+
+        internal unsafe byte* ReadBlocks(ulong logicalBlockAddress, out uint totalBytesRead,
+            uint blocksCount = 1, byte* into = null)
+        {
+            return Manager.ReadBlocks(logicalBlockAddress + this.StartSector, out totalBytesRead,
+                blocksCount, into);
+        }
+
+        internal unsafe void SeekTo(ulong logicalBlockAddress)
+        {
+            Manager.SeekTo(logicalBlockAddress + this.StartSector);
         }
 
         internal unsafe void UpdateBadClustersMap()

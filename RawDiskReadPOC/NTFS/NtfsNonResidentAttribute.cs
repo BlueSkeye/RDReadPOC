@@ -42,11 +42,13 @@ namespace RawDiskReadPOC.NTFS
         /// <returns></returns>
         internal unsafe List<LogicalChunk> DecodeRunArray()
         {
+            // TODO : Data runs may change over time when file is modified. How can we detect this
+            // and reuse the already decoded array if we are sure the file is untouched since last
+            // decoding ?
             List<LogicalChunk> chunks = new List<LogicalChunk>();
             fixed (NtfsNonResidentAttribute* pAttribute = &this) {
                 ulong previousRunLCN = 0;
                 byte* pDecodedByte = ((byte*)pAttribute) + pAttribute->RunArrayOffset;
-                Helpers.Dump(pDecodedByte, 64);
                 while (true) {
                     byte headerByte = *(pDecodedByte++);
                     if (0 == headerByte) { break; }
@@ -201,8 +203,7 @@ namespace RawDiskReadPOC.NTFS
                                 _currentChunk = _chunkEnumerator.Current;
                                 _currentChunkClusterIndex = 0;
                                 _currentChunkRemainingBytesCount = _clusterSize * _currentChunk.ClustersCount;
-                                _partition.Manager.SeekTo(
-                                    _currentChunk.FirstLogicalClusterNumber * sectorsPerCluster);
+                                _partition.SeekTo(_currentChunk.FirstLogicalClusterNumber * sectorsPerCluster);
                                 readFromCluster = _currentChunk.FirstLogicalClusterNumber;
                             }
                             ulong remainingClustersInChunk = _currentChunk.ClustersCount - _currentChunkClusterIndex;
@@ -219,7 +220,7 @@ namespace RawDiskReadPOC.NTFS
                             }
                             // Perform read and reinitialize some internal values.
                             ulong readFromBlock = readFromCluster * sectorsPerCluster;
-                            _partition.Manager.ReadBlocks(readFromBlock, out _localBufferBytesCount,
+                            _partition.ReadBlocks(readFromBlock, out _localBufferBytesCount,
                                 readBlocksCount, _localBuffer);
                             _localBufferPosition = 0;
                             _currentChunkClusterIndex += (readBlocksCount / sectorsPerCluster);

@@ -42,19 +42,19 @@ namespace RawDiskReadPOC
             foreach(PartitionBase item in _partitions) { yield return item; }
         }
 
-        internal unsafe byte* Read(ulong logicalBlockAddress, uint count = 1, byte* into = null)
+        internal unsafe byte* Read(ulong physicalBlockAddress, uint count = 1, byte* into = null)
         {
             uint trash;
-            return ReadBlocks(logicalBlockAddress, out trash, count, into);
+            return ReadBlocks(physicalBlockAddress, out trash, count, into);
         }
 
         /// <summary>Read a some number of sectors.</summary>
-        /// <param name="logicalBlockAddress">Address of the buffer to read.</param>
+        /// <param name="physicalBlockAddress">Address of the buffer to read.</param>
         /// <param name="totalBytesRead">On return updated with the returned bytes count.</param>
         /// <param name="blocksCount">Number of blocks to read.</param>
         /// <param name="into">Target buffer. If null, the method will allocate the buffer.</param>
         /// <returns>Buffer address.</returns>
-        internal unsafe byte* ReadBlocks(ulong logicalBlockAddress, out uint totalBytesRead,
+        internal unsafe byte* ReadBlocks(ulong physicalBlockAddress, out uint totalBytesRead,
             uint blocksCount = 1, byte* into = null)
         {
             uint bytesPerSector = _geometry.BytesPerSector;
@@ -62,7 +62,7 @@ namespace RawDiskReadPOC
                 into = (byte*)Marshal.AllocCoTaskMem((int)(blocksCount * bytesPerSector));
             }
             uint expectedCount = blocksCount * bytesPerSector;
-            ulong offset = logicalBlockAddress * bytesPerSector;
+            ulong offset = physicalBlockAddress * bytesPerSector;
             if (!Natives.SetFilePointerEx(_rawHandle, (long)offset, out offset, Natives.FILE_BEGIN)) {
                 throw new ApplicationException();
             }
