@@ -4,9 +4,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
-using RawDiskReadPOC.NTFS;
-
-namespace RawDiskReadPOC
+namespace RawDiskReadPOC.NTFS
 {
     /// <summary></summary>
     /// <remarks>See
@@ -14,15 +12,13 @@ namespace RawDiskReadPOC
     /// http://dubeyko.com/development/FileSystems/NTFS/ntfsdoc.pdf
     /// https://en.wikipedia.org/wiki/NTFS
     /// </remarks>
-    internal class NTFSPartition : PartitionManager.PartitionBase
+    internal class NtfsPartition : PartitionManager.PartitionBase
     {
-        internal NTFSPartition(bool hidden, uint startSector, uint sectorCount)
+        internal NtfsPartition(bool hidden, uint startSector, uint sectorCount)
             : base(startSector, sectorCount)
         {
             Hidden = hidden;
         }
-
-        internal unsafe delegate bool RecordAttributeEnumeratorCallbackDelegate(NtfsAttribute* value);
 
         internal ulong this[string name]
         {
@@ -80,10 +76,7 @@ namespace RawDiskReadPOC
                     _metadataFileLBAs[mdfIndex] = currentRecordLBA;
                     currentRecord = Manager.Read(currentRecordLBA, SectorsPerCluster, currentRecord);
                     NtfsFileRecord* header = (NtfsFileRecord*)currentRecord;
-                    if (FileRecordMarker != header->Ntfs.Type) {
-                        // We expect a 'FILE' NTFS record here.
-                        throw new NotImplementedException();
-                    }
+                    header->AssertRecordType();
                     NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
                     // Walk attributes. Technically this is useless. However that let us trace metafile names.
                     for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
@@ -177,10 +170,7 @@ namespace RawDiskReadPOC
                         currentRecordLBA += SectorsPerCluster;
                         continue;
                     }
-                    if (FileRecordMarker != header->Ntfs.Type) {
-                        // We expect a 'FILE' NTFS record here.
-                        throw new NotImplementedException();
-                    }
+                    header->AssertRecordType();
                     NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
                     // Walk attributes. Technically this is useless. However that let us trace metafile names.
                     for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
@@ -209,11 +199,8 @@ namespace RawDiskReadPOC
             RecordAttributeEnumeratorCallbackDelegate callback)
         {
             buffer = Manager.Read(recordLBA, SectorsPerCluster, buffer);
-            if (FileRecordMarker != *((uint*)buffer)) {
-                // We expect a 'FILE' NTFS record here.
-                throw new NotImplementedException();
-            }
             NtfsFileRecord* header = (NtfsFileRecord*)buffer;
+            header->AssertRecordType();
             if (1024 < header->BytesAllocated) {
                 throw new NotImplementedException();
             }
@@ -305,9 +292,9 @@ namespace RawDiskReadPOC
                 if (0xAA != sector[511]) { throw new ApplicationException(); }
                 byte* sectorPosition = sector + 3;
                 // Verify OEMID field conformance.
-                int OEMIDlength = OEMID.Length;
+                int OEMIDlength = Constants.OEMID.Length;
                 for(int index = 0; index < OEMIDlength; index++) {
-                    if (*(sectorPosition++) != OEMID[index]) {
+                    if (*(sectorPosition++) != Constants.OEMID[index]) {
                         throw new ApplicationException();
                     }
                 }
@@ -365,10 +352,7 @@ namespace RawDiskReadPOC
                 buffer = Manager.ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
                 readOpCount++;
                 header = (NtfsFileRecord*)buffer;
-                if (FileRecordMarker != header->Ntfs.Type) {
-                    // We expect a 'FILE' NTFS record here.
-                    throw new NotImplementedException();
-                }
+                header->AssertRecordType();
                 NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
                 // Walk attributes.
                 for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
@@ -422,10 +406,7 @@ namespace RawDiskReadPOC
                 buffer = Manager.ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
                 readOpCount++;
                 header = (NtfsFileRecord*)buffer;
-                if (FileRecordMarker != header->Ntfs.Type) {
-                    // We expect a 'FILE' NTFS record here.
-                    throw new NotImplementedException();
-                }
+                header->AssertRecordType();
                 NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
                 // Walk attributes.
                 for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
@@ -449,8 +430,6 @@ namespace RawDiskReadPOC
             finally { if (null != buffer) { Marshal.FreeCoTaskMem((IntPtr)buffer); } }
         }
 
-        private static readonly uint FileRecordMarker = 0x454C4946; // FILE
-        private static readonly byte[] OEMID = Encoding.ASCII.GetBytes("NTFS    ");
         private ulong[] _metadataFileLBAs = new ulong[16];
         private unsafe NtfsMFTFileRecord* _mft;
         private Dictionary<string, ulong> _metadataFilesLBAByName = new Dictionary<string, ulong>();

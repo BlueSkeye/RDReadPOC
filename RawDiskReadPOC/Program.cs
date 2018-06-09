@@ -11,7 +11,7 @@ namespace RawDiskReadPOC
         private static unsafe void CountFiles()
         {
             foreach (PartitionManager.PartitionBase partition in _partitionManager.EnumeratePartitions()) {
-                NTFSPartition ntfsPartition = partition as NTFSPartition;
+                NtfsPartition ntfsPartition = partition as NtfsPartition;
                 if (null == ntfsPartition) { throw new NotSupportedException(); }
                 if (!partition.Active) { continue; }
                 ulong filesCount = ntfsPartition.CountFiles();
@@ -30,7 +30,7 @@ namespace RawDiskReadPOC
             try {
                 foreach (PartitionManager.PartitionBase partition in _partitionManager.EnumeratePartitions()) {
                     if (!partition.ShouldCapture) { continue; }
-                    NTFSPartition ntfsPartition = partition as NTFSPartition;
+                    NtfsPartition ntfsPartition = partition as NtfsPartition;
                     if (null == ntfsPartition) { throw new NotSupportedException(); }
                     ntfsPartition.InterpretBootSector();
                     ntfsPartition.CaptureMetadataFilePointers();
@@ -69,7 +69,7 @@ namespace RawDiskReadPOC
                 NtfsMFTFileRecord.AssertMFTRecordCachingInvariance(_partitionManager);
                 foreach (PartitionManager.PartitionBase partition in _partitionManager.EnumeratePartitions()) {
                     if (!partition.ShouldCapture) { continue; }
-                    NTFSPartition ntfsPartition = partition as NTFSPartition;
+                    NtfsPartition ntfsPartition = partition as NtfsPartition;
                     ntfsPartition.CountFiles();
                     ntfsPartition.MonitorBadClusters();
                     ntfsPartition.ReadBitmap();

@@ -95,7 +95,7 @@ namespace RawDiskReadPOC.NTFS
         /// used for reading the underlying media.</param>
         /// <param name="chunks">Optional parameter.</param>
         /// <returns></returns>
-        internal Stream OpenDataStream(NTFSPartition partition, List<LogicalChunk> chunks = null)
+        internal Stream OpenDataStream(NtfsPartition partition, List<LogicalChunk> chunks = null)
         {
             if (null == partition) { throw new ArgumentNullException(); }
             if (0 != this.CompressionUnit) { throw new NotSupportedException(); }
@@ -117,7 +117,7 @@ namespace RawDiskReadPOC.NTFS
 
         private class NonResidentDataStream : Stream
         {
-            internal NonResidentDataStream(NTFSPartition partition, List<LogicalChunk> chunks)
+            internal NonResidentDataStream(NtfsPartition partition, List<LogicalChunk> chunks)
             {
                 _partition = partition ?? throw new InvalidOperationException();
                 _chunks = chunks ?? throw new InvalidOperationException();
@@ -303,7 +303,7 @@ namespace RawDiskReadPOC.NTFS
             /// itself until method exit.</summary>
             private int _localBufferPosition;
             /// <summary>The partition this stream belongs to?</summary>
-            private NTFSPartition _partition;
+            private NtfsPartition _partition;
             /// <summary>Current position in this stream.</summary>
             private long _position = 0;
         }

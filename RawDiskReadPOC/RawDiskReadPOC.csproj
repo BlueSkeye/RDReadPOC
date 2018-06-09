@@ -52,7 +52,8 @@
     <Compile Include="DiskGeometry.cs" />
     <Compile Include="Helpers.cs" />
     <Compile Include="Natives.cs" />
-    <Compile Include="NTFSPartition.cs" />
+    <Compile Include="NTFS\NtfsPartition.cs" />
+    <Compile Include="NTFS\Constants.cs" />
     <Compile Include="NTFS\NtfsAttribute.cs" />
     <Compile Include="NTFS\NtfsAttributeListAttribute.cs" />
     <Compile Include="NTFS\NtfsAttributeType.cs" />
@@ -73,6 +74,7 @@
     <Compile Include="NTFS\NtfsVolumeInformationAttribute.cs" />
     <Compile Include="NTFS\NtfsWellKnownMetadataFiles.cs" />
     <Compile Include="NTFS\ObjectIdAttribute.cs" />
+    <Compile Include="NTFS\RecordAttributeEnumeratorCallbackDelegate.cs" />
     <Compile Include="NTFS\ReparsePointAttribute.cs" />
     <Compile Include="PartitionManager.cs" />
     <Compile Include="Program.cs" />

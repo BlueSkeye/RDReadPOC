@@ -30,7 +30,7 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
-        internal static unsafe NtfsMFTFileRecord* Create(NTFSPartition owner, byte* rawData)
+        internal static unsafe NtfsMFTFileRecord* Create(NtfsPartition owner, byte* rawData)
         {
             if (null == owner) { throw new ArgumentNullException(); }
             if (_gcPreventer.ContainsKey(owner.StartSector)) {

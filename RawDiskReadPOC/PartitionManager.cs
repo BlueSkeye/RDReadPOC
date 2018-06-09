@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
+using RawDiskReadPOC.NTFS;
+
 namespace RawDiskReadPOC
 {
     internal class PartitionManager
@@ -124,7 +126,7 @@ namespace RawDiskReadPOC
                         // Empty entry.
                         return null;
                     case 0x07:
-                        result = new NTFSPartition(hiddenPartition, startSector, sectorsCount);
+                        result = new NtfsPartition(hiddenPartition, startSector, sectorsCount);
                         break;
                     case 0x17:
                         // TODO : Should differentiate 0x17 & 0x27
