@@ -13,6 +13,21 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        internal unsafe void BinaryDump()
+        {
+            NtfsFileRecord dumped = this;
+            Helpers.BinaryDump((byte*)&dumped, BytesInUse);
+        }
+
+        internal void Dump()
+        {
+            Ntfs.Dump();
+            Console.WriteLine(
+                "Seq {0}, #lnk {1}, aOff {2}, flg {3}, usd {4}, all {5}, bfr {6}, nxA {7}",
+                SequenceNumber, LinkCount, AttributesOffset, Flags, BytesInUse, BytesAllocated,
+                BaseFileRecord, NextAttributeNumber);
+        }
+
         internal unsafe void EnumerateRecordAttributes(NtfsPartition owner, ulong recordLBA,
             ref byte* buffer, RecordAttributeEnumeratorCallbackDelegate callback)
         {
@@ -37,7 +52,6 @@ namespace RawDiskReadPOC.NTFS
         {
             // Walk attributes, seeking for the searched one.
             NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
-            // Walk attributes. Technically this is useless. However that let us trace metafile names.
             for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
                 if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
                 if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }

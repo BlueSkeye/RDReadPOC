@@ -81,8 +81,7 @@ namespace RawDiskReadPOC.NTFS
                     // Walk attributes. Technically this is useless. However that let us trace metafile names.
                     for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
                         if (NtfsAttributeType.AttributeFileName == currentAttribute->AttributeType) {
-                            NtfsFileNameAttribute* nameAttribute = (NtfsFileNameAttribute*)
-                                ((byte*)currentAttribute + sizeof(NtfsResidentAttribute));
+                            NtfsFileNameAttribute* nameAttribute = (NtfsFileNameAttribute*)currentAttribute;
                             string metadataFileName = Encoding.Unicode.GetString((byte*)&nameAttribute->Name, nameAttribute->NameLength * sizeof(char));
                             if ("$MFT" == metadataFileName) {
                                 // It is not expected for a partition to have more than one $Mft record.
@@ -123,12 +122,18 @@ namespace RawDiskReadPOC.NTFS
             ulong fileCount = 0;
             _mft.EnumerateRecords(this,
                 delegate (NtfsFileRecord* record) {
+                    record->Dump();
                     fileCount++;
                     NtfsFileNameAttribute* nameAttribute =
                         (NtfsFileNameAttribute*)record->GetAttribute(NtfsAttributeType.AttributeFileName);
                     if (null != nameAttribute) {
                         string name = nameAttribute->GetName();
-                        if (!string.IsNullOrEmpty(name)) { Console.WriteLine(name); }
+                        if (!string.IsNullOrEmpty(name)) {
+                            Console.WriteLine("Attribute @offset 0x{0:X4}",
+                                (byte*)nameAttribute - (byte*)record);
+                            record->BinaryDump();
+                            Console.WriteLine(name);
+                        }
                     }
                     return true;
                 });
@@ -175,7 +180,7 @@ namespace RawDiskReadPOC.NTFS
                     }
                     if (0xC6 == fileIndex) {
                         uint bufferOffset = (uint)((byte*)header - buffer);
-                        Helpers.Dump((byte*)header, bufferSize - bufferOffset);
+                        Helpers.BinaryDump((byte*)header, bufferSize - bufferOffset);
                     }
                     if (0 == header->Ntfs.Type) {
                         // Trigger data read on next LBA
@@ -190,8 +195,7 @@ namespace RawDiskReadPOC.NTFS
                         if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
                         if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
                         if (NtfsAttributeType.AttributeFileName == currentAttribute->AttributeType) {
-                            NtfsFileNameAttribute* nameAttribute = (NtfsFileNameAttribute*)
-                                ((byte*)currentAttribute + sizeof(NtfsResidentAttribute));
+                            NtfsFileNameAttribute* nameAttribute = (NtfsFileNameAttribute*)currentAttribute;
                             string metadataFileName = Encoding.Unicode.GetString((byte*)&nameAttribute->Name, nameAttribute->NameLength * sizeof(char));
                             Console.WriteLine(metadataFileName);
                         }

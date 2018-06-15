@@ -15,7 +15,7 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
-        /// <summary>OPen the data stream for this bitmap attribute and scan each bit
+        /// <summary>Open the data stream for this bitmap attribute and scan each bit
         /// yielding either true or false if bit is set or cleared.</summary>
         /// <param name="partition"></param>
         /// <returns></returns>

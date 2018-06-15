@@ -4,7 +4,7 @@ namespace RawDiskReadPOC
 {
     internal static class Helpers
     {
-        internal static unsafe void Dump(byte* buffer, uint size)
+        internal static unsafe void BinaryDump(byte* buffer, uint size)
         {
             for(uint index = 0; index < size; index++) {
                 if (0 == (index % 16)) {

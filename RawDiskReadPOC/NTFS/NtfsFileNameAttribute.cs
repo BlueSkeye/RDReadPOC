@@ -6,6 +6,7 @@ namespace RawDiskReadPOC.NTFS
     /// <remarks>The filename attribute is always resident.</remarks>
     internal unsafe struct NtfsFileNameAttribute
     {
+        internal NtfsResidentAttribute BaseAttribute;
         /// <summary>The file reference number of the directory in which the filename is entered</summary>
         internal ulong DirectoryFileReferenceNumber;
         /// <summary>The time when the file was created in the standard time format (that is. the number
@@ -45,14 +46,19 @@ namespace RawDiskReadPOC.NTFS
         /// corresponding to a long name.</summary>
         internal byte NameType;
         /// <summary>The name, in Unicode, of the file</summary>
-        internal char Name;
+        internal byte Name;
 
         internal unsafe string GetName()
         {
             if (0 == NameLength) { return string.Empty; }
             NtfsFileNameAttribute result = this;
-            byte* nameBuffer = (byte*)(&((&result)->Name));
-            return Encoding.Unicode.GetString(nameBuffer, sizeof(char) * this.NameLength);
+            char* nameBuffer = (char*)(&((&result)->Name));
+            // TODO Is this a kind of hack or a bug
+            int nameLength = this.NameLength;
+            for (int index = nameLength - 1; 0 <=  index; index--) {
+                if (0 == nameBuffer[index]) { nameLength = index; }
+            }
+            return Encoding.Unicode.GetString((byte*)nameBuffer, sizeof(char) * nameLength);
         }
     }
 }

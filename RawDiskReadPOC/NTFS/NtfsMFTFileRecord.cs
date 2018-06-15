@@ -20,6 +20,7 @@ namespace RawDiskReadPOC.NTFS
             Helpers.Memcpy(rawData, _localBuffer, copiedBytesCount);
             return;
         }
+
         internal unsafe NtfsFileRecord* RecordBase
         {
             get { return (NtfsFileRecord*)_localBuffer; }
@@ -75,23 +76,35 @@ namespace RawDiskReadPOC.NTFS
                 throw new ApplicationException();
             }
             ulong clusterSize = partition.ClusterSize;
+            ulong recordsPerCluster = clusterSize / RECORD_SIZE;
             byte[] localBuffer = new byte[clusterSize];
             Stream dataStream = dataAttribute->OpenDataStream(partition);
             try {
                 NtfsBitmapAttribute* bitmap = (NtfsBitmapAttribute*)RecordBase->GetAttribute(NtfsAttributeType.AttributeBitmap);
                 if (null == bitmap) { throw new AssertionException("Didn't find the $MFT bitmap attribute."); }
-                ulong clusterOffset = 0;
+                ulong currentClusterIndex = 0;
+                bool endOfStream = false;
                 foreach(ulong itemIndex in bitmap->EnumerateUsedItemIndex(partition)) {
+                    ulong targetClusterIndex = itemIndex / recordsPerCluster;
+                    ulong recordIndexInCluster = itemIndex % recordsPerCluster;
                     // TODO : Seek is not supported, so we need to read the whold stream.
                     // CONSIDER : Implement Seek
-                    while(clusterOffset <= itemIndex) {
-                        if ((int)clusterSize != dataStream.Read(localBuffer, 0, (int)clusterSize)) {
+                    while (currentClusterIndex <= targetClusterIndex) {
+                        int readCount = dataStream.Read(localBuffer, 0, (int)clusterSize);
+                        if (0 == readCount) {
+                            endOfStream = true;
+                            break;
+                        }
+                        if ((int)clusterSize != readCount) {
                             throw new ApplicationException();
                         }
-                        clusterOffset++;
+                        currentClusterIndex++;
                     }
+                    if (endOfStream) { break; }
                     fixed(byte* nativeBuffer = localBuffer) {
-                        if (!callback((NtfsFileRecord*)nativeBuffer)) { break; }
+                        byte* nativeRecord = nativeBuffer + (RECORD_SIZE * recordIndexInCluster);
+                        // TODO Make sure the result is inside the buffer.
+                        if (!callback((NtfsFileRecord*)nativeRecord)) { break; }
                     }
                 }
                 if (null != dataStream) { dataStream.Close(); }
@@ -116,6 +129,7 @@ namespace RawDiskReadPOC.NTFS
             throw new NotImplementedException();
         }
 
+        private const ulong RECORD_SIZE = 1024;
         private static Dictionary<uint, NtfsMFTFileRecord> _gcPreventer =
             new Dictionary<uint, NtfsMFTFileRecord>();
         internal unsafe byte* _localBuffer;
