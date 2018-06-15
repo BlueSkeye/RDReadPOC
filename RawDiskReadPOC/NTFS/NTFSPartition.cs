@@ -44,7 +44,7 @@ namespace RawDiskReadPOC.NTFS
 
         internal byte MediaDescriptor { get; private set; }
 
-        internal unsafe NtfsMFTFileRecord* MFT
+        internal unsafe NtfsMFTFileRecord MFT
         {
             get
             {
@@ -86,7 +86,7 @@ namespace RawDiskReadPOC.NTFS
                             string metadataFileName = Encoding.Unicode.GetString((byte*)&nameAttribute->Name, nameAttribute->NameLength * sizeof(char));
                             if ("$MFT" == metadataFileName) {
                                 // It is not expected for a partition to have more than one $Mft record.
-                                if (null != _mft) { throw new NotSupportedException(); }
+                                if (null != _mft) { throw new AssertionException("Several $Mft record were found."); }
                                 _mft = NtfsMFTFileRecord.Create(this, currentRecord);
                             }
                             _metadataFilesLBAByName.Add(metadataFileName, currentRecordLBA);
@@ -105,7 +105,7 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe ulong CountFiles()
         {
             // Start at $MFT LBA.
-            ulong mftLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.MFT];
+            // ulong mftLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.MFT];
             //byte* buffer = null;
             //try {
             //    EnumerateRecordAttributes(mftLBA, ref buffer, delegate (NtfsAttribute* found) {
@@ -120,28 +120,41 @@ namespace RawDiskReadPOC.NTFS
             // - Trigger Bitmap attribute capture
             // - Read records.
             // - Count them
-            throw new NotImplementedException();
-            byte* mftRecord = null;
-            ulong result = 0;
-            try {
-                // Find Bitmap attribute. TODO Handle case where this require an attribute list.
-                NtfsAttribute* bitmapAttribute = GetFileRecordAttribute(mftLBA, NtfsAttributeType.AttributeBitmap, ref mftRecord);
-                if (null == bitmapAttribute) { throw new ApplicationException(); }
-                if (0 == bitmapAttribute->Nonresident) {
-                    // Extremely unlikely.
-                    throw new NotImplementedException();
-                }
-                NtfsBitmapAttribute* nrBitmapAttribute = (NtfsBitmapAttribute*)bitmapAttribute;
-                int bitmapBufferLength = 8192;
-                byte[] bitmapBuffer = new byte[bitmapBufferLength];
-                using (Stream dataStream = nrBitmapAttribute->nonResidentHeader.OpenDataStream(this)) {
-                    int readCount;
-                    while (0 != (readCount = dataStream.Read(bitmapBuffer, 0, bitmapBufferLength))) {
+            ulong fileCount = 0;
+            _mft.EnumerateRecords(this,
+                delegate (NtfsFileRecord* record) {
+                    fileCount++;
+                    NtfsFileNameAttribute* nameAttribute =
+                        (NtfsFileNameAttribute*)record->GetAttribute(NtfsAttributeType.AttributeFileName);
+                    if (null != nameAttribute) {
+                        string name = nameAttribute->GetName();
+                        if (!string.IsNullOrEmpty(name)) { Console.WriteLine(name); }
                     }
-                }
-                return result;
-            }
-            finally { if (null != mftRecord) { Marshal.FreeCoTaskMem((IntPtr)mftRecord); } }
+                    return true;
+                });
+            Console.WriteLine("Found {0} files", fileCount);
+            throw new NotImplementedException();
+            //byte* mftRecord = null;
+            //ulong result = 0;
+            //try {
+            //    // Find Bitmap attribute. TODO Handle case where this require an attribute list.
+            //    NtfsAttribute* bitmapAttribute = GetFileRecordAttribute(mftLBA, NtfsAttributeType.AttributeBitmap, ref mftRecord);
+            //    if (null == bitmapAttribute) { throw new ApplicationException(); }
+            //    if (0 == bitmapAttribute->Nonresident) {
+            //        // Extremely unlikely.
+            //        throw new NotImplementedException();
+            //    }
+            //    NtfsBitmapAttribute* nrBitmapAttribute = (NtfsBitmapAttribute*)bitmapAttribute;
+            //    int bitmapBufferLength = 8192;
+            //    byte[] bitmapBuffer = new byte[bitmapBufferLength];
+            //    using (Stream dataStream = nrBitmapAttribute->nonResidentHeader.OpenDataStream(this)) {
+            //        int readCount;
+            //        while (0 != (readCount = dataStream.Read(bitmapBuffer, 0, bitmapBufferLength))) {
+            //        }
+            //    }
+            //    return result;
+            //}
+            //finally { if (null != mftRecord) { Marshal.FreeCoTaskMem((IntPtr)mftRecord); } }
         }
 
         internal unsafe void DumpFirstFileNames()
@@ -224,63 +237,42 @@ namespace RawDiskReadPOC.NTFS
         {
             ulong bitmapLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.Bitmap];
             byte* buffer = null;
-            NtfsNonResidentAttribute* bitmapDataAttribute = (NtfsNonResidentAttribute*)
-                GetFileRecordAttribute(bitmapLBA, NtfsAttributeType.AttributeData, ref buffer);
-            Stream bitmapStream = bitmapDataAttribute->OpenDataStream(this);
-            ulong initializedSize = bitmapDataAttribute->InitializedSize;
-            int bitmapBufferLength = 1;
-            byte[] bitmapBuffer = new byte[bitmapBufferLength];
-            int lastReadCount = 0;
-            int totalUsedClusters = 0;
-            int totalIndexedClusters = 0;
-            for (ulong offset = 0; offset < initializedSize; offset += (uint)lastReadCount) {
-                lastReadCount = bitmapStream.Read(bitmapBuffer, 0, bitmapBufferLength);
-                // Invariant check
-                if (bitmapBufferLength < lastReadCount) { throw new ApplicationException(); }
-                // Invariant check
-                if (0 == lastReadCount) { throw new ApplicationException(); }
-                // For debugging purpose
-                for (int index = 0; index < lastReadCount; index++) {
-                    byte item = bitmapBuffer[index];
-                    for(int bitIndex = 0; bitIndex < 8; bitIndex++) {
-                        totalIndexedClusters++;
-                        if (0 != (item & (byte)(1 << bitIndex))) { totalUsedClusters++; }
-                    }
-                }
-            }
-            // For debuging purpose.
-            int unusedBytes = 0;
-            while (true) {
-                int trashBytes = bitmapStream.Read(bitmapBuffer, 0, bitmapBufferLength);
-                unusedBytes += trashBytes;
-                if (0 == trashBytes) { break; }
-            }
-            totalIndexedClusters -= (unusedBytes * 8);
-            Console.WriteLine("{0} indexed clusters, {1} in use, {2} free, {3} extra bits.",
-                totalIndexedClusters, totalUsedClusters, totalIndexedClusters - totalUsedClusters,
-                unusedBytes * 8);
-        }
-
-        /// <summary>Retrieve the Nth attribute of a given kind from a file record.</summary>
-        /// <param name="recordLBA"></param>
-        /// <param name="kind"></param>
-        /// <param name="buffer"></param>
-        /// <param name="order"></param>
-        /// <returns></returns>
-        internal unsafe NtfsAttribute* GetFileRecordAttribute(ulong recordLBA, NtfsAttributeType kind,
-            ref byte* buffer, uint order = 1)
-        {
-            NtfsAttribute* result = null;
-            EnumerateRecordAttributes(recordLBA, ref buffer, delegate (NtfsAttribute* found) {
-                if (kind == found->AttributeType) {
-                    if (0 == --order) {
-                        result = found;
-                        return false;
-                    }
-                }
-                return true;
-            });
-            return result;
+            throw new NotImplementedException();
+            //NtfsNonResidentAttribute* bitmapDataAttribute = (NtfsNonResidentAttribute*)
+            //    GetFileRecordAttribute(bitmapLBA, NtfsAttributeType.AttributeData, ref buffer);
+            //Stream bitmapStream = bitmapDataAttribute->OpenDataStream(this);
+            //ulong initializedSize = bitmapDataAttribute->InitializedSize;
+            //int bitmapBufferLength = 1;
+            //byte[] bitmapBuffer = new byte[bitmapBufferLength];
+            //int lastReadCount = 0;
+            //int totalUsedClusters = 0;
+            //int totalIndexedClusters = 0;
+            //for (ulong offset = 0; offset < initializedSize; offset += (uint)lastReadCount) {
+            //    lastReadCount = bitmapStream.Read(bitmapBuffer, 0, bitmapBufferLength);
+            //    // Invariant check
+            //    if (bitmapBufferLength < lastReadCount) { throw new ApplicationException(); }
+            //    // Invariant check
+            //    if (0 == lastReadCount) { throw new ApplicationException(); }
+            //    // For debugging purpose
+            //    for (int index = 0; index < lastReadCount; index++) {
+            //        byte item = bitmapBuffer[index];
+            //        for(int bitIndex = 0; bitIndex < 8; bitIndex++) {
+            //            totalIndexedClusters++;
+            //            if (0 != (item & (byte)(1 << bitIndex))) { totalUsedClusters++; }
+            //        }
+            //    }
+            //}
+            //// For debuging purpose.
+            //int unusedBytes = 0;
+            //while (true) {
+            //    int trashBytes = bitmapStream.Read(bitmapBuffer, 0, bitmapBufferLength);
+            //    unusedBytes += trashBytes;
+            //    if (0 == trashBytes) { break; }
+            //}
+            //totalIndexedClusters -= (unusedBytes * 8);
+            //Console.WriteLine("{0} indexed clusters, {1} in use, {2} free, {3} extra bits.",
+            //    totalIndexedClusters, totalUsedClusters, totalIndexedClusters - totalUsedClusters,
+            //    unusedBytes * 8);
         }
 
         internal unsafe void InterpretBootSector()
@@ -431,7 +423,7 @@ namespace RawDiskReadPOC.NTFS
         }
 
         private ulong[] _metadataFileLBAs = new ulong[16];
-        private unsafe NtfsMFTFileRecord* _mft;
+        private NtfsMFTFileRecord _mft;
         private Dictionary<string, ulong> _metadataFilesLBAByName = new Dictionary<string, ulong>();
     }
 }

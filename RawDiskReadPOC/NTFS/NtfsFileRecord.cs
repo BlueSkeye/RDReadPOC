@@ -9,7 +9,7 @@ namespace RawDiskReadPOC.NTFS
         internal void AssertRecordType()
         {
             if (Constants.FileRecordMarker != Ntfs.Type) {
-                throw new ApplicationException();
+                throw new AssertionException("Reacord type mismatch. Expected a FILE record.");
             }
         }
 
@@ -22,17 +22,50 @@ namespace RawDiskReadPOC.NTFS
             if (1024 < header->BytesAllocated) {
                 throw new NotImplementedException();
             }
+            EnumerateRecordAttributes(header, callback);
+        }
+
+        internal unsafe void EnumerateRecordAttributes(RecordAttributeEnumeratorCallbackDelegate callback)
+        {
+            fixed (NtfsFileRecord* header = &this) {
+                EnumerateRecordAttributes(header, callback);
+            }
+        }
+
+        internal static unsafe void EnumerateRecordAttributes(NtfsFileRecord* header,
+            RecordAttributeEnumeratorCallbackDelegate callback)
+        {
             // Walk attributes, seeking for the searched one.
             NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
             // Walk attributes. Technically this is useless. However that let us trace metafile names.
             for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
                 if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
                 if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
-                if (!callback(currentAttribute)) { return; }
                 if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
+                if (!callback(currentAttribute)) { return; }
                 currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
             }
             return;
+        }
+
+        /// <summary>Retrieve the Nth attribute of a given kind from a file record.</summary>
+        /// <param name="kind">Searched attribute type.</param>
+        /// <param name="order">Attribute rank. Default is first. This is usefull for some kind of
+        /// attributes such as Data one that can appear several times in a record.</param>
+        /// <returns></returns>
+        internal unsafe NtfsAttribute* GetAttribute(NtfsAttributeType kind, uint order = 1)
+        {
+            NtfsAttribute* result = null;
+            EnumerateRecordAttributes(delegate (NtfsAttribute* found) {
+                if (kind == found->AttributeType) {
+                    if (0 == --order) {
+                        result = found;
+                        return false;
+                    }
+                }
+                return true;
+            });
+            return result;
         }
 
         /// <summary>An NTFS_RECORD_HEADER structure with a Type of ‘FILE’.</summary>

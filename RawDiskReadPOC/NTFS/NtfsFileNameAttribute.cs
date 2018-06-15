@@ -1,9 +1,10 @@
-﻿
+﻿using System.Text;
+
 namespace RawDiskReadPOC.NTFS
 {
     /// <summary></summary>
     /// <remarks>The filename attribute is always resident.</remarks>
-    internal struct NtfsFileNameAttribute
+    internal unsafe struct NtfsFileNameAttribute
     {
         /// <summary>The file reference number of the directory in which the filename is entered</summary>
         internal ulong DirectoryFileReferenceNumber;
@@ -45,5 +46,13 @@ namespace RawDiskReadPOC.NTFS
         internal byte NameType;
         /// <summary>The name, in Unicode, of the file</summary>
         internal char Name;
+
+        internal unsafe string GetName()
+        {
+            if (0 == NameLength) { return string.Empty; }
+            NtfsFileNameAttribute result = this;
+            byte* nameBuffer = (byte*)(&((&result)->Name));
+            return Encoding.Unicode.GetString(nameBuffer, sizeof(char) * this.NameLength);
+        }
     }
 }

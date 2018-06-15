@@ -7,6 +7,11 @@ namespace RawDiskReadPOC.NTFS
 {
     internal struct NtfsNonResidentAttribute
     {
+        internal void AssertNonResident()
+        {
+            if (0 == Attribute.Nonresident) { throw new ApplicationException(); }
+        }
+        
         /// <summary>An ATTRIBUTE structure containing members common to resident and
         /// nonresident attributes.</summary>
         internal NtfsAttribute Attribute;
@@ -111,7 +116,6 @@ namespace RawDiskReadPOC.NTFS
             public override string ToString()
             {
                 return string.Format("L={0} LCN={1:X8}", ClustersCount, FirstLogicalClusterNumber);
-
             }
         }
 
@@ -232,21 +236,7 @@ namespace RawDiskReadPOC.NTFS
 
                         // Copy data from local buffer to target one.
                         if (int.MaxValue < readCount) { throw new ApplicationException(); }
-                        ulong quickMoveCount = readCount / 8;
-                        ulong* pQuickBufferTo = (ulong*)pBuffer;
-                        ulong* pQuickBufferFrom = (ulong*)(_localBuffer + _localBufferPosition);
-                        while (0 < quickMoveCount) {
-                            *(pQuickBufferTo++) = *(pQuickBufferFrom++);
-                            quickMoveCount--;
-                        }
-                        readCount -= (8 * quickMoveCount);
-                        while (0 < readCount) {
-                            *((byte*)pQuickBufferTo++) = *((byte*)pQuickBufferFrom++);
-                            readCount--;
-                        }
-                        // Check invariant
-                        if (0 != readCount) { throw new ApplicationException(); }
-
+                        Helpers.Memcpy(_localBuffer + _localBufferPosition, pBuffer, (int)readCount);
                         // Adjust values for next round.
                         _currentChunkRemainingBytesCount -= _localBufferBytesCount;
                         ulong effectiveRead = (remainingExpectedBytes < _localBufferBytesCount)

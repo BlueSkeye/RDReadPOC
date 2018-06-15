@@ -17,5 +17,17 @@ namespace RawDiskReadPOC
             }
             Console.WriteLine();
         }
+
+        internal static unsafe void Memcpy(byte* from, byte* to, int length)
+        {
+            while (sizeof(ulong) <= length) {
+                *((ulong*)to) = *((ulong*)from);
+                to += sizeof(ulong);
+                from += sizeof(ulong);
+                length -= sizeof(ulong);
+            }
+            while (0 < length--) { *to++ = *from++; }
+            return;
+        }
     }
 }
