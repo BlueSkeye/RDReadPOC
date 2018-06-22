@@ -15,8 +15,9 @@ namespace RawDiskReadPOC.NTFS
 
         internal unsafe void BinaryDump()
         {
-            NtfsFileRecord dumped = this;
-            Helpers.BinaryDump((byte*)&dumped, BytesInUse);
+            fixed (NtfsFileRecord* dumped = &this) {
+                Helpers.BinaryDump((byte*)dumped, BytesInUse);
+            }
         }
 
         internal void Dump()

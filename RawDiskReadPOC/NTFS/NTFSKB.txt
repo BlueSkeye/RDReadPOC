@@ -178,4 +178,37 @@ Cluster size is 0x1000
 So we have 0xC000 bytes in data for a total of 60000 clusters leading to 0x60000000 bytes
 or roughly ‭1610612736‬ bytes.
 
+. MFT entry Root index attribute example
+========================================
+
+// NtfsAttribute
+000 (000) : 90 00 00 00 58 00 00 00 00 04 18 00 00 00 06 00
+// NtfsResidentAttribute
+010 (016) : 38 00 00 00 20 00 00 00
+// Root index attribute RIA header part
+018 (024) : 24 00 49 00 33 00 38 00 30 00 00 00 01 00 00 00
+Type : 24 00 49 00
+Collation : 33 00 38 00 ("83")
+Bytes per index block : 30 00 00 00 (48)
+Cluster per Index block : 01 (1)
+Filler : 00 00 00
+// Root index attribute DIRECTORY_INDEX part
+028 (040) : 00 10 00 00 01 00 00 00 10 00 00 00 28 00 00 00
+Offset to first index entry : 00 10 00 00 (4096)
+Index entries total size : 01 00 00 00 (1)
+Index entry allocated size : 10 00 00 00 (16)
+Flags : 28 
+Filler : 00 00 00
+038 (056) : 28 00 00 00 01 00 00 00
+040 (064) : 00 00 00 00 00 00 00 00 18 00 00 00 03 00 00 00
+050 (080) : 00 00 00 00 00 00 00 00 A0 00 00 00 50 00 00 00
+060 (096) : 01 04 40 00 00 00 08 00 00 00 00 00 00 00 00 00
+070 (112) : 00 00 00 00 00 00 00 00 48 00 00 00 00 00 00 00
+Typ AttributeIndexRoot, L=88, Re, Flg 0x0000, Att# 6 ($I38)
+VL 56, VO 0x0020, Flg 0
+Type I$, Coll 83, BPIB 48, CPIB 1
+        1st off 4096, TotL 1, Allo 16, 40
+
+
+
 

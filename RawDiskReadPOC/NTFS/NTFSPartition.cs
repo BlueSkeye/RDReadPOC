@@ -120,24 +120,31 @@ namespace RawDiskReadPOC.NTFS
             // - Read records.
             // - Count them
             ulong fileCount = 0;
+            NtfsFileRecord* rootRecord = null;
             _mft.EnumerateRecords(this,
                 delegate (NtfsFileRecord* record) {
-                    record->Dump();
-                    fileCount++;
                     NtfsFileNameAttribute* nameAttribute =
                         (NtfsFileNameAttribute*)record->GetAttribute(NtfsAttributeType.AttributeFileName);
                     if (null != nameAttribute) {
                         string name = nameAttribute->GetName();
-                        if (!string.IsNullOrEmpty(name)) {
-                            Console.WriteLine("Attribute @offset 0x{0:X4}",
-                                (byte*)nameAttribute - (byte*)record);
-                            record->BinaryDump();
-                            Console.WriteLine(name);
+                        if ("." == name) {
+                            Console.WriteLine("Root directory found");
+                            rootRecord = record;
+                            return false;
                         }
                     }
                     return true;
                 });
-            Console.WriteLine("Found {0} files", fileCount);
+            if (null == rootRecord) {
+                throw new ApplicationException();
+            }
+            NtfsRootIndexAttribute* rootIndexAttribute =
+                (NtfsRootIndexAttribute*)rootRecord->GetAttribute(NtfsAttributeType.AttributeIndexRoot);
+            if (null == rootIndexAttribute) {
+                throw new ApplicationException("Root index attribute not found.");
+            }
+            Helpers.BinaryDump((byte*)rootIndexAttribute, 128);
+            rootIndexAttribute->Dump();
             throw new NotImplementedException();
             //byte* mftRecord = null;
             //ulong result = 0;

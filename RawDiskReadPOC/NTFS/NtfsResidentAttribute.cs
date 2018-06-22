@@ -1,8 +1,25 @@
-﻿
+﻿using System;
+
 namespace RawDiskReadPOC.NTFS
 {
+    /// <summary></summary>
+    /// <remarks>Size is 0x18/24 bytes = 16 + 8</remarks>
     internal struct NtfsResidentAttribute
     {
+        internal void AssertResident()
+        {
+            if (0 != Attribute.Nonresident) {
+                throw new AssertionException("Non resident attribute found which was expected to be resident.");
+            }
+        }
+
+        internal void Dump()
+        {
+            Attribute.Dump();
+            Console.WriteLine("VL {0}, VO 0x{1:X4}, Flg {2}",
+                ValueLength, ValueOffset, Flags);
+        }
+        
         /// <summary>An ATTRIBUTE structure containing members common to resident and
         /// nonresident attributes.</summary>
         internal NtfsAttribute Attribute;

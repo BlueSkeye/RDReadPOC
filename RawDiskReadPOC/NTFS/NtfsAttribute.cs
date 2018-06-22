@@ -1,9 +1,38 @@
-﻿using System.Text;
+﻿using System;
+using System.Text;
 
 namespace RawDiskReadPOC.NTFS
 {
+    /// <summary></summary>
+    /// <remarks>Size is 0x10/16 bytes.</remarks>
     internal struct NtfsAttribute
     {
+        /// <summary>Returns attribute name or a null reference if the name is undefined.</summary>
+        internal unsafe string Name
+        {
+            get
+            {
+                if (0 == NameLength) { return null; }
+                fixed (NtfsAttribute* ptr = &this) {
+                    return Encoding.Unicode.GetString((byte*)ptr + NameOffset, sizeof(char) * NameLength);
+                }
+            }
+        }
+
+        internal unsafe void BinaryDump()
+        {
+            fixed (void* dumped = &this) {
+                Helpers.BinaryDump((byte*)dumped, Length);
+            }
+        }
+
+        internal void Dump()
+        {
+            Console.WriteLine("Typ {0}, L={1}, {2}, Flg 0x{3:X4}, Att# {4} ({5})",
+                AttributeType, Length, (0 == Nonresident) ? "Re" : "NR", Flags,
+                AttributeNumber, Name ?? "UNNAMED");
+        }
+
         internal NtfsAttributeType AttributeType;
         /// <summary>The size, in bytes, of the resident part of the attribute.</summary>
         internal uint Length;
@@ -19,17 +48,5 @@ namespace RawDiskReadPOC.NTFS
         internal ushort Flags;
         /// <summary>A numeric identifier for the instance of the attribute.</summary>
         internal ushort AttributeNumber;
-
-        /// <summary>Returns attribute name or a null reference if the name is undefined.</summary>
-        internal unsafe string Name
-        {
-            get
-            {
-                if (0 == NameLength) { return null; }
-                fixed(NtfsAttribute* ptr = &this) {
-                    return Encoding.Unicode.GetString((byte*)ptr + NameOffset, sizeof(char) * NameLength);
-                }
-            }
-        }
     }
 }

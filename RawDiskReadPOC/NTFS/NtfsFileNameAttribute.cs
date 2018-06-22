@@ -51,14 +51,15 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe string GetName()
         {
             if (0 == NameLength) { return string.Empty; }
-            NtfsFileNameAttribute result = this;
-            char* nameBuffer = (char*)(&((&result)->Name));
-            // TODO Is this a kind of hack or a bug
-            int nameLength = this.NameLength;
-            for (int index = nameLength - 1; 0 <=  index; index--) {
-                if (0 == nameBuffer[index]) { nameLength = index; }
+            fixed (byte* nameBuffer = &this.Name) {
+                int nameLength = this.NameLength;
+                for (int index = nameLength - 1; 0 <= index; index--) {
+                    char scannedCharacter = ((char*)nameBuffer)[index];
+                    if (0 == scannedCharacter) { nameLength = index; }
+                }
+                int bytesCount = sizeof(char) * nameLength;
+                return Encoding.Unicode.GetString(nameBuffer, bytesCount);
             }
-            return Encoding.Unicode.GetString((byte*)nameBuffer, sizeof(char) * nameLength);
         }
     }
 }
