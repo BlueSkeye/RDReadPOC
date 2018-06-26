@@ -15,7 +15,7 @@ namespace RawDiskReadPOC.NTFS
     internal class NtfsPartition : PartitionManager.GenericPartition
     {
         internal NtfsPartition(IntPtr handle, bool hidden, uint startSector, uint sectorCount)
-            : base(startSector, sectorCount)
+            : base(handle, startSector, sectorCount)
         {
             if (0 >= handle.ToInt64()) { throw new ArgumentException(); }
             _privateHandle = handle;
@@ -74,11 +74,10 @@ namespace RawDiskReadPOC.NTFS
         {
             // Start at $MFT LBA.
             ulong currentRecordLBA = StartSector + (MFTClusterNumber * SectorsPerCluster);
-            byte* currentRecord = null;
-            try {
-                for (int mdfIndex = 0; mdfIndex < 16; mdfIndex++) {
-                    _metadataFileLBAs[mdfIndex] = currentRecordLBA;
-                    currentRecord = Read(currentRecordLBA);
+            for (int mdfIndex = 0; mdfIndex < 16; mdfIndex++) {
+                _metadataFileLBAs[mdfIndex] = currentRecordLBA;
+                using (IPartitionClusterData clusterData = Read(currentRecordLBA)) {
+                    byte* currentRecord = clusterData.Data;
                     NtfsFileRecord* header = (NtfsFileRecord*)currentRecord;
                     header->AssertRecordType();
                     NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
@@ -102,7 +101,6 @@ namespace RawDiskReadPOC.NTFS
                     currentRecordLBA += header->BytesAllocated / BytesPerSector;
                 }
             }
-            finally { if (null != currentRecord) { Marshal.FreeCoTaskMem((IntPtr)currentRecord); } }
         }
 
         internal unsafe ulong CountFiles()
@@ -186,7 +184,7 @@ namespace RawDiskReadPOC.NTFS
             ulong currentRecordLBA = StartSector + (MFTClusterNumber * SectorsPerCluster);
             byte* buffer = null;
             try {
-                ulong clusterSize = Manager.Geometry.BytesPerSector * SectorsPerCluster;
+                ulong clusterSize = PartitionManager.Singleton.Geometry.BytesPerSector * SectorsPerCluster;
                 uint bufferSize = 0;
                 NtfsFileRecord* header = null;
                 uint readOpCount = 0;
@@ -233,21 +231,23 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe void EnumerateRecordAttributes(ulong recordLBA, ref byte* buffer,
             RecordAttributeEnumeratorCallbackDelegate callback)
         {
-            buffer = Read(recordLBA);
-            NtfsFileRecord* header = (NtfsFileRecord*)buffer;
-            header->AssertRecordType();
-            if (1024 < header->BytesAllocated) {
-                throw new NotImplementedException();
-            }
-            // Walk attributes, seeking for the searched one.
-            NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
-            // Walk attributes. Technically this is useless. However that let us trace metafile names.
-            for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
-                if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
-                if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
-                if (!callback(currentAttribute)) { return; }
-                if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
-                currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
+            using (IPartitionClusterData clusterData = Read(recordLBA)) {
+                buffer = clusterData.Data;
+                NtfsFileRecord* header = (NtfsFileRecord*)buffer;
+                header->AssertRecordType();
+                if (1024 < header->BytesAllocated) {
+                    throw new NotImplementedException();
+                }
+                // Walk attributes, seeking for the searched one.
+                NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
+                // Walk attributes. Technically this is useless. However that let us trace metafile names.
+                for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
+                    if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
+                    if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
+                    if (!callback(currentAttribute)) { return; }
+                    if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
+                    currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
+                }
             }
             return;
         }
@@ -297,11 +297,15 @@ namespace RawDiskReadPOC.NTFS
             //    unusedBytes * 8);
         }
 
+        protected override IPartitionClusterData GetClusterBuffer()
+        {
+            return _PartitionClusterData.CreateFromPool(ClusterSize);
+        }
+
         internal unsafe void InterpretBootSector()
         {
-            byte* sector = null;
-            try {
-                sector = Read(StartSector);
+            using(IPartitionClusterData clusterData = Read(StartSector)) {
+                byte* sector = clusterData.Data;
                 if (0x55 != sector[510]) { throw new ApplicationException(); }
                 if (0xAA != sector[511]) { throw new ApplicationException(); }
                 byte* sectorPosition = sector + 3;
@@ -341,7 +345,6 @@ namespace RawDiskReadPOC.NTFS
                 sectorPosition += sizeof(uint); // Unused
                 if (0x54 != (sectorPosition - sector)) { throw new ApplicationException(); }
             }
-            finally { if(null != sector) { Marshal.FreeCoTaskMem((IntPtr)sector); } }
         }
 
         /// <summary>Monitor bad clusters. Maintains an internal list of bad clusters and
@@ -365,7 +368,7 @@ namespace RawDiskReadPOC.NTFS
         {
             IPartitionClusterData result = _PartitionClusterData.CreateFromPool(ClusterSize);
             try {
-                uint bytesPerSector = Manager.Geometry.BytesPerSector;
+                uint bytesPerSector = PartitionManager.Singleton.Geometry.BytesPerSector;
                 uint expectedCount = blocksCount * bytesPerSector;
                 ulong offset = logicalBlockAddress * bytesPerSector;
                 if (!Natives.SetFilePointerEx(_privateHandle, (long)offset, out offset, Natives.FILE_BEGIN)) {
@@ -391,7 +394,7 @@ namespace RawDiskReadPOC.NTFS
         {
             byte* buffer = null;
             uint bufferSize = 0;
-            ulong clusterSize = Manager.Geometry.BytesPerSector * SectorsPerCluster;
+            ulong clusterSize = PartitionManager.Singleton.Geometry.BytesPerSector * SectorsPerCluster;
             ulong currentRecordLBA =
                 _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.Bitmap];
             NtfsFileRecord* header = null;
@@ -433,14 +436,14 @@ namespace RawDiskReadPOC.NTFS
 
         internal unsafe void SeekTo(ulong logicalBlockAddress)
         {
-            Manager.SeekTo(logicalBlockAddress + this.StartSector);
+            PartitionManager.Singleton.SeekTo(logicalBlockAddress + this.StartSector);
         }
 
         internal unsafe void UpdateBadClustersMap()
         {
             byte* buffer = null;
             uint bufferSize = 0;
-            ulong clusterSize = Manager.Geometry.BytesPerSector * SectorsPerCluster;
+            ulong clusterSize = PartitionManager.Singleton.Geometry.BytesPerSector * SectorsPerCluster;
             ulong currentRecordLBA =
                 _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.BadClusters];
             NtfsFileRecord* header = null;

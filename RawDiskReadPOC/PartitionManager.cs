@@ -10,32 +10,48 @@ namespace RawDiskReadPOC
     {
         internal PartitionManager(IntPtr rawHandle, DiskGeometry geometry)
         {
+            lock (typeof(PartitionManager)) {
+                if (null != Singleton) {
+                    throw new InvalidOperationException("Singleton rule violation.");
+                }
+                Singleton = this;
+            }
             _geometry = geometry ?? throw new ArgumentNullException();
             _rawHandle = rawHandle;
         }
 
         internal DiskGeometry Geometry { get { return _geometry; } }
 
+        internal static PartitionManager Singleton { get; private set; }
+
         /// <summary>Discover partitions</summary>
         internal unsafe void Discover()
         {
-            byte* masterBootRecord = null;
-            try {
-                masterBootRecord = (byte*)this.Read(0);
+            VolumePartition fakePartition = new VolumePartition(_rawHandle, 0, 16);
+            using (IPartitionClusterData rawData = fakePartition.Read(0)) {
+                uint minSector = uint.MaxValue;
+                uint maxSector = 0;
+                byte* masterBootRecord = rawData.Data;
                 if (0x55 != masterBootRecord[510]) { throw new ApplicationException(); }
                 if (0xAA != masterBootRecord[511]) { throw new ApplicationException(); }
                 // From http://thestarman.pcministry.com/asm/mbr/PartTables.htm
                 for (uint partitionIndex = 0; partitionIndex < 4; partitionIndex++) {
                     GenericPartition newPartition = GenericPartition.Create(this, masterBootRecord, 446 + (16 * partitionIndex));
                     if (null != newPartition) {
+                        // TODO : This algorithm doesn't let us witness the extra sectors after the last partition.
+                        if (minSector > newPartition.StartSector) {
+                            minSector = newPartition.StartSector;
+                        }
+                        if (maxSector < (newPartition.StartSector + newPartition.SectorCount - 1)) {
+                            maxSector = newPartition.StartSector + newPartition.SectorCount - 1;
+                        }
                         _partitions.Add(newPartition);
                     }
                 }
                 Console.WriteLine("Found {0} partitions.", _partitions.Count);
+                if (maxSector < minSector) { throw new ApplicationException(); }
+                _volumePartition = new VolumePartition(_rawHandle, minSector, maxSector - minSector);
                 return;
-            }
-            finally {
-                if (null != masterBootRecord) { Marshal.FreeCoTaskMem((IntPtr)masterBootRecord); }
             }
         }
 
@@ -56,18 +72,21 @@ namespace RawDiskReadPOC
         private DiskGeometry _geometry;
         private List<GenericPartition> _partitions = new List<GenericPartition>();
         private IntPtr _rawHandle;
+        private VolumePartition _volumePartition;
 
         internal abstract class GenericPartition
         {
-            protected GenericPartition(uint startSector, uint sectorCount)
+            protected GenericPartition(IntPtr handle, uint startSector, uint sectorCount)
             {
+                if (IntPtr.Zero == handle) { throw new ArgumentNullException(); }
+                _handle = handle;
                 StartSector = startSector;
                 SectorCount = sectorCount;
             }
 
             internal bool Active { get; private set; }
 
-            internal PartitionManager Manager { get; private set; }
+            internal IntPtr Handle { get; private set; }
 
             internal uint SectorCount { get; private set; }
 
@@ -119,9 +138,85 @@ namespace RawDiskReadPOC
                 }
                 if (null != result) {
                     result.Active = activePartition;
-                    result.Manager = manager;
                 }
                 return result;
+            }
+
+            protected abstract IPartitionClusterData GetClusterBuffer();
+
+            internal IPartitionClusterData Read(ulong logicalBlockAddress, uint count = 1)
+            {
+                return ReadBlocks(logicalBlockAddress, count);
+            }
+
+            /// <summary>Read a some number of sectors.</summary>
+            /// <param name="logicalBlockAddress">Address of the buffer to read.</param>
+            /// <param name="blocksCount">Number of blocks to read.</param>
+            /// <returns>Buffer address.</returns>
+            internal unsafe IPartitionClusterData ReadBlocks(ulong logicalBlockAddress, uint blocksCount = 1)
+            {
+                IPartitionClusterData result = GetClusterBuffer();
+                try {
+                    uint bytesPerSector = Singleton.Geometry.BytesPerSector;
+                    uint expectedCount = blocksCount * bytesPerSector;
+                    ulong offset = logicalBlockAddress * bytesPerSector;
+                    if (!Natives.SetFilePointerEx(_handle, (long)offset, out offset, Natives.FILE_BEGIN)) {
+                        throw new ApplicationException();
+                    }
+                    uint totalBytesRead;
+                    if (!Natives.ReadFile(_handle, result.Data, expectedCount, out totalBytesRead, IntPtr.Zero)) {
+                        throw new ApplicationException();
+                    }
+                    if (totalBytesRead != expectedCount) {
+                        throw new ApplicationException();
+                    }
+                    return result;
+                }
+                catch {
+                    result.Dispose();
+                    throw;
+                }
+            }
+
+            private IntPtr _handle;
+        }
+
+        private class VolumePartition : GenericPartition
+        {
+            internal VolumePartition(IntPtr handle, uint startSector, uint sectorCount)
+                : base(handle, startSector, sectorCount)
+            {
+                return;
+            }
+
+            protected override IPartitionClusterData GetClusterBuffer()
+            {
+                return new MinimalPartitionClusterDataImpl();
+            }
+
+            private class MinimalPartitionClusterDataImpl : IPartitionClusterData
+            {
+                public MinimalPartitionClusterDataImpl()
+                {
+                    // TODO : Add flexibility. No hardcoded size.
+                    _nativeData = Marshal.AllocCoTaskMem(16 * 1024);
+                }
+
+                public uint DataSize => throw new NotImplementedException();
+
+                public unsafe byte* Data => throw new NotImplementedException();
+
+                public void Dispose()
+                {
+                    lock (this) {
+                        if (IntPtr.Zero != _nativeData) {
+                            Marshal.FreeCoTaskMem(_nativeData);
+                            _nativeData = IntPtr.Zero;
+                        }
+                    }
+                }
+
+                private IntPtr _nativeData;
             }
         }
     }
