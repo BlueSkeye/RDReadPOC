@@ -1,8 +1,15 @@
-﻿
+﻿using System;
+
 namespace RawDiskReadPOC.NTFS
 {
-    internal class NtfsDirectoryIndex
+    internal struct NtfsDirectoryIndex
     {
+        internal void Dump()
+        {
+            Console.WriteLine("\tEoff {0}, IBL {1}, Asize {2}, FL {3}",
+                EntriesOffset, IndexBlockLength, AllocatedSize, Flags);
+        }
+        
         /// <summary>The offset, in bytes, from the start of the structure to the first DIRECTORY_ENTRY
         /// structure.</summary>
         internal uint EntriesOffset;

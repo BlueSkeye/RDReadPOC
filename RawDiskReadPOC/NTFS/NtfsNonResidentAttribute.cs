@@ -9,38 +9,8 @@ namespace RawDiskReadPOC.NTFS
     {
         internal void AssertNonResident()
         {
-            if (0 == Attribute.Nonresident) { throw new ApplicationException(); }
+            if (0 == Header.Nonresident) { throw new ApplicationException(); }
         }
-        
-        /// <summary>An ATTRIBUTE structure containing members common to resident and
-        /// nonresident attributes.</summary>
-        internal NtfsAttribute Attribute;
-        /// <summary>The lowest valid Virtual Cluster Number (VCN) of this portion of the
-        /// attribute value. Unless the attribute value is very fragmentedc(to the extent
-        /// that an attribute list is needed to describe it), there is only one portion of
-        /// the attribute value, and the value of LowVcn is zero.</summary>
-        internal ulong LowVcn;
-        /// <summary>The highest valid VCN of this portion of the attribute value.</summary>
-        internal ulong HighVcn;
-        /// <summary>The offset, in bytes, from the start of the structure to the run array that
-        /// contains the mappings between VCNs and Logical Cluster Numbers(LCNs).</summary>
-        internal ushort RunArrayOffset;
-        /// <summary>The compression unit for the attribute expressed as the logarithm to the
-        /// base two of the number of clusters in a compression unit. If CompressionUnit is zero,
-        /// the attribute is not compressed.</summary>
-        internal byte CompressionUnit;
-        internal byte Alignment1;
-        internal uint Alignment2;
-        /// <summary>The size, in bytes, of disk space allocated to hold the attribute value</summary>
-        internal ulong AllocatedSize;
-        /// <summary>The size, in bytes, of the attribute value.This may be larger than the AllocatedSize
-        /// if the attribute value is compressed or sparse.</summary>
-        internal ulong DataSize;
-        /// <summary>The size, in bytes, of the initialized portion of the attribute value.</summary>
-        internal ulong InitializedSize;
-        /// <summary>The size, in bytes, of the attribute value after compression. This member is only
-        /// present when the attribute is compressed.</summary>
-        internal ulong CompressedSize;
 
         /// <summary>Returns an ordered set of items each of which describes a range of adjacent logical
         /// clusters and the logical number of the first cluster in the range.</summary>
@@ -95,18 +65,57 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        internal void Dump()
+        {
+            Header.Dump();
+            Console.WriteLine("\tVCN 0x{0:X8}-0x{1:X8}, ROff {2}, CU {3}",
+                LowVcn, HighVcn, RunArrayOffset, CompressionUnit);
+            Console.WriteLine("\tAsize 0x{0:X8}, Dsize 0x{1:X8}",
+                AllocatedSize, DataSize);
+            Console.WriteLine("\tIsize 0x{0:X8}, Csize 0x{1:X8}",
+                InitializedSize, CompressedSize);
+            return;
+        }
+
         /// <summary>Open a data stream on the data part of this attribute.</summary>
-        /// <param name="partition">The partition this attribute is located in. This parameter is
-        /// used for reading the underlying media.</param>
         /// <param name="chunks">Optional parameter.</param>
         /// <returns></returns>
-        internal Stream OpenDataStream(NtfsPartition partition, List<LogicalChunk> chunks = null)
+        internal Stream OpenDataStream(List<LogicalChunk> chunks = null)
         {
-            if (null == partition) { throw new ArgumentNullException(); }
             if (0 != this.CompressionUnit) { throw new NotSupportedException(); }
             if (null == chunks) { chunks = DecodeRunArray(); }
-            return new NonResidentDataStream(partition, chunks);
+            return new NonResidentDataStream(chunks);
         }
+
+        /// <summary>An ATTRIBUTE structure containing members common to resident and
+        /// nonresident attributes.</summary>
+        internal NtfsAttribute Header;
+        /// <summary>The lowest valid Virtual Cluster Number (VCN) of this portion of the
+        /// attribute value. Unless the attribute value is very fragmentedc(to the extent
+        /// that an attribute list is needed to describe it), there is only one portion of
+        /// the attribute value, and the value of LowVcn is zero.</summary>
+        internal ulong LowVcn;
+        /// <summary>The highest valid VCN of this portion of the attribute value.</summary>
+        internal ulong HighVcn;
+        /// <summary>The offset, in bytes, from the start of the structure to the run array that
+        /// contains the mappings between VCNs and Logical Cluster Numbers(LCNs).</summary>
+        internal ushort RunArrayOffset;
+        /// <summary>The compression unit for the attribute expressed as the logarithm to the
+        /// base two of the number of clusters in a compression unit. If CompressionUnit is zero,
+        /// the attribute is not compressed.</summary>
+        internal byte CompressionUnit;
+        internal byte Alignment1;
+        internal uint Alignment2;
+        /// <summary>The size, in bytes, of disk space allocated to hold the attribute value</summary>
+        internal ulong AllocatedSize;
+        /// <summary>The size, in bytes, of the attribute value.This may be larger than the AllocatedSize
+        /// if the attribute value is compressed or sparse.</summary>
+        internal ulong DataSize;
+        /// <summary>The size, in bytes, of the initialized portion of the attribute value.</summary>
+        internal ulong InitializedSize;
+        /// <summary>The size, in bytes, of the attribute value after compression. This member is only
+        /// present when the attribute is compressed.</summary>
+        internal ulong CompressedSize;
 
         internal class LogicalChunk
         {
@@ -121,14 +130,14 @@ namespace RawDiskReadPOC.NTFS
 
         private class NonResidentDataStream : Stream
         {
-            internal NonResidentDataStream(NtfsPartition partition, List<LogicalChunk> chunks)
+            internal NonResidentDataStream(List<LogicalChunk> chunks)
             {
-                _partition = partition ?? throw new InvalidOperationException();
+                _partition = NtfsPartition.Current ?? throw new InvalidOperationException();
                 _chunks = chunks ?? throw new InvalidOperationException();
                 _chunkEnumerator = _chunks.GetEnumerator();
                 // Optimization.
-                _clusterSize = partition.ClusterSize;
-                MAX_READ_BLOCKS = (int)(partition.SectorsPerCluster * 8);
+                _clusterSize = _partition.ClusterSize;
+                MAX_READ_BLOCKS = (int)(_partition.SectorsPerCluster * 8);
                 BUFFER_SIZE = (int)(MAX_READ_BLOCKS * _partition.BytesPerSector);
             }
 
@@ -236,7 +245,7 @@ namespace RawDiskReadPOC.NTFS
 
                         // Copy data from local buffer to target one.
                         if (int.MaxValue < readCount) { throw new ApplicationException(); }
-                        Helpers.Memcpy(_localBuffer + _localBufferPosition, pBuffer, (int)readCount);
+                        Helpers.Memcpy(_localBuffer + _localBufferPosition, pBuffer + offset, (int)readCount);
                         // Adjust values for next round.
                         _currentChunkRemainingBytesCount -= _localBufferBytesCount;
                         ulong effectiveRead = (remainingExpectedBytes < _localBufferBytesCount)

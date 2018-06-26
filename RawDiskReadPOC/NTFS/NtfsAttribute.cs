@@ -26,7 +26,52 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
-        internal void Dump()
+        internal unsafe void Dump(bool redirectToTypeDumper = false)
+        {
+            if (!redirectToTypeDumper) {
+                _Dump();
+                return;
+            }
+            fixed (void* rawAttribute = &this) {
+                switch (AttributeType) {
+                    case NtfsAttributeType.AttributeBitmap:
+                        ((NtfsBitmapAttribute*)rawAttribute)->Dump();
+                        return;
+                    case NtfsAttributeType.AttributeFileName:
+                        ((NtfsFileNameAttribute*)rawAttribute)->Dump();
+                        return;
+                    case NtfsAttributeType.AttributeIndexAllocation:
+                        ((NtfsIndexAllocationAttribute*)rawAttribute)->Dump();
+                        return;
+                    case NtfsAttributeType.AttributeIndexRoot:
+                        ((NtfsRootIndexAttribute*)rawAttribute)->Dump();
+                        return;
+                    case NtfsAttributeType.AttributeLoggedUtilityStream:
+                        ((NtfsLoggedUtilyStreamAttribute*)rawAttribute)->Dump();
+                        return;
+                    case NtfsAttributeType.AttributeSecurityDescriptor:
+                        ((NtfsSecurityDescriptorAttribute*)rawAttribute)->Dump();
+                        return;
+                    case NtfsAttributeType.AttributeStandardInformation:
+                        ((NtfsStandardInformationAttribute*)rawAttribute)->Dump();
+                        return;
+
+                    case NtfsAttributeType.AttributeAttributeList:
+                    case NtfsAttributeType.AttributeObjectId:
+                    case NtfsAttributeType.AttributeVolumeName:
+                    case NtfsAttributeType.AttributeVolumeInformation:
+                    case NtfsAttributeType.AttributeData:
+                    case NtfsAttributeType.AttributeReparsePoint:
+                    case NtfsAttributeType.AttributeEAInformation:
+                    case NtfsAttributeType.AttributeEA:
+                    case NtfsAttributeType.AttributePropertySet:
+                    default:
+                        throw new NotSupportedException();
+                }
+            }
+        }
+
+        private void _Dump()
         {
             Console.WriteLine("Typ {0}, L={1}, {2}, Flg 0x{3:X4}, Att# {4} ({5})",
                 AttributeType, Length, (0 == Nonresident) ? "Re" : "NR", Flags,

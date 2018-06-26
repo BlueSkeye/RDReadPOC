@@ -204,11 +204,167 @@ Filler : 00 00 00
 050 (080) : 00 00 00 00 00 00 00 00 A0 00 00 00 50 00 00 00
 060 (096) : 01 04 40 00 00 00 08 00 00 00 00 00 00 00 00 00
 070 (112) : 00 00 00 00 00 00 00 00 48 00 00 00 00 00 00 00
+080 (128) : 00 10 00 00 00 00 00 00 00 10 00 00 00 00 00 00
+090 (144) : 00 10 00 00 00 00 00 00 24 00 49 00 33 00 30 00
+0A0 (160) : 11 01 2A 00 00 00 00 00 B0 00 00 00 28 00 00 00
+0B0 (176) : 00 04 18 00 00 00 07 00 08 00 00 00 20 00 00 00
+0C0 (192) : 24 00 49 00 33 00 30 00 01 00 00 00 00 00 00 00
+0D0 (208) : 00 01 00 00 68 00 00 00 00 09 18 00 00 00 09 00
+0E0 (224) : 38 00 00 00 30 00 00 00 24 00 54 00 58 00 46 00
+0F0 (240) : 5F 00 44 00 41 00 54 00 41 00 00 00 00 00 00 00
+100 (256) : 05 00 00 00 00 00 05 00 01 00 00 00 01 00 00 00
+110 (272) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+120 (288) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+130 (304) : 02 00 00 00 00 00 00 00 FF FF FF FF 00 00 00 00
+140 (320) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+150 (336) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+160 (352) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+170 (368) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+180 (384) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+190 (400) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+1A0 (416) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+1B0 (432) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+1C0 (448) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+1D0 (464) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+1E0 (480) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+1F0 (496) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
 Typ AttributeIndexRoot, L=88, Re, Flg 0x0000, Att# 6 ($I38)
 VL 56, VO 0x0020, Flg 0
 Type I$, Coll 83, BPIB 48, CPIB 1
         1st off 4096, TotL 1, Allo 16, 40
 
+ 
+
+ During an analysis, we must be careful because directories may contain a $DATA attribute andthis is
+ suspicious. Although ﬁles usually contain only one dataattribute, they might also have an Alternate
+ Data Stream (ADS)or even more.An ADS is a named $DATA attribute associated to a ﬁle. Windows doesnot
+ provide GUI tools to access these kind of streams, however theymight be created by referencing a ﬁle
+ name followed by a colon andthe name of the stream. For example, an executable ﬁle might behidden
+ inside an ADS of a text ﬁle with the following command [4]: type notepad.exe > myfile.txt:np.exe
+For this reason, it is important to check for hidden information inall $DATA attributes in ﬁles and
+folders. A reconstruction algorithmshould take every ADS into account and consider it a componentof
+the enclosing ﬁle—or a separate node whose name includes alsothe main one. Figure 2.1 is an example
+of the latter choice, becausestreams $BadClus and $BadClus:$Bad are shown as different nodes inthe
+directory tree.3.3 index records
+
+Index records form the contents of non-resident
+
+$INDEX_ALLOCATION attributes. Table 3.4 shows the structure of the ﬁrst 24 bytes of arecord, i.e. its
+header. This kind of record shares some similaritieswith a MFT entry. First of all, the ﬁrst sector of
+an index record is recognizable from the signature INDX
+Moreover, ﬁxup values must beapplied before decoding the contents of the record.An index record contains
+some nodes of the B-tree. Each node startswith a standard header, which is shown in Table
+
+The header contains information about the starting and ending offsets of the indexentry list, i.e. a list
+of the contents in the node. The root node con-tained inside a $INDEX_ROOT attribute has exactly the same
+structure.
+
+. $MFT record dump
+==================
+
+Root directory found
+000 (000) : 46 49 4C 45 30 00 03 00 20 CB E3 29 00 00 00 00
+FILE, off 48, cnt 3, usn 702794528
+030 (048) : 38 00 30 00 00 00 00 00
+Fixup : 0038 => 0030, 0000, 0000
+010 (016) : 05 00 01 00 38 00 03 00 20 03 00 00 00 04 00 00
+020 (032) : 00 00 00 00 00 00 00 00 0A 00 00 00 05 00 00 00 
+Seq 5, #lnk 1, aOff 56, flg 3, usd 800, all 1024, bfr 0, nxA 10
+
+038 (056) : 10 00 00 00 48 00 00 00 00 00 18 00 00 00 00 00
+Typ AttributeStandardInformation, L=72, Re, Flg 0x0000, Att# 0 (UNNAMED)
+VL 48, VO 0x0018, Flg 0
+048 (072) : 30 00 00 00 18 00 00 00
+		050 (080) : 93 64 8D 9C 4E D9 D0 01 0A 83 9C 3C 43 03 D4 01
+		060 (096) : 0A 83 9C 3C 43 03 D4 01 0A 83 9C 3C 43 03 D4 01
+		070 (112) : 06 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        CR 130843320850932883 (2015-08-18 00:41:25)
+        CH 131733876415169290 (2018-06-13 18:20:41)
+        LW 131733876415169290 (2018-06-13 18:20:41)
+        LA 131733876415169290 (2018-06-13 18:20:41)
+        Attr 6 : Hidden, System
+        Maxv 0, V# 0, Clsid 0
+        Qid 48, Secid 96, Qch 281474978283520, Usn Ox1001800000044
+
+Typ AttributeFileName, L=96, Re, Flg 0x0000, Att# 1 (UNNAMED)
+VL 68, VO 0x0018, Flg 1
+        RefNum 0x5000000000005
+        CR 130843320850932883 (2015-08-18 00:41:25)
+        CH 130843320850932883 (2015-08-18 00:41:25)
+        LW 130843320850932883 (2015-08-18 00:41:25)
+        LA 130843320850932883 (2015-08-18 00:41:25)
+        Alloc 0, Size 0
+        Attr 268435462 : Hidden, System
+        NL 1, Ty 3 (.)
+Typ AttributeSecurityDescriptor, L=256, Re, Flg 0x0000, Att# 2 (UNNAMED)
+VL 228, VO 0x0018, Flg 0
+        TODO dump content
+Typ AttributeIndexRoot, L=88, Re, Flg 0x0000, Att# 6 ($I38)
+VL 56, VO 0x0020, Flg 0
+        Type I$, Coll 83, BPIB 48, CPIB 1
+                1st off 4096, TotL 1, Allo 16, 40
+        TODO dump content
+Typ AttributeIndexAllocation, L=80, NR, Flg 0x0000, Att# 8 ($I30)
+        VCN 0x00000000-0x00000000, ROff 72, CU 0
+        Asize 0x00001000, Dsize 0x00001000
+        Isize 0x00001000, Csize 0x30003300490024
+        BVcn 0x002A0111
+        Eoff 176, IBL 40, Asize 1573888, FL 458752
+Typ AttributeBitmap, L=40, Re, Flg 0x0000, Att# 7 ($I30)
+VL 8, VO 0x0020, Flg 0
+        01 00 00 00 00 00 00 00
+Typ AttributeLoggedUtilityStream, L=104, Re, Flg 0x0000, Att# 9 ($TXF_DATA)
+VL 56, VO 0x0030, Flg 0
+        05 00 00 00 00 00 05 00 01 00 00 00 01 00 00 00
+        00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+        02 00 00 00 00 00 00 00
+
+
+FILE, off 48, cnt 3, usn 702794528
+Seq 5, #lnk 1, aOff 56, flg 3, usd 800, all 1024, bfr 0, nxA 10
 
 
 
+080 (128) : 30 00 00 00 60 00 00 00 00 00 18 00 00 00 01 00
+090 (144) : 44 00 00 00 18 00 01 00 05 00 00 00 00 00 05 00
+0A0 (160) : 93 64 8D 9C 4E D9 D0 01 93 64 8D 9C 4E D9 D0 01
+0B0 (176) : 93 64 8D 9C 4E D9 D0 01 93 64 8D 9C 4E D9 D0 01
+0C0 (192) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+0D0 (208) : 06 00 00 10 00 00 00 00 01 03 2E 00 00 00 00 00
+0E0 (224) : 50 00 00 00 00 01 00 00 00 00 18 00 00 00 02 00
+0F0 (240) : E4 00 00 00 18 00 00 00 01 00 04 80 CC 00 00 00
+100 (256) : D8 00 00 00 00 00 00 00 14 00 00 00 02 00 B8 00
+110 (272) : 08 00 00 00 00 00 18 00 FF 01 1F 00 01 02 00 00
+120 (288) : 00 00 00 05 20 00 00 00 20 02 00 00 00 0B 18 00
+130 (304) : 00 00 00 10 01 02 00 00 00 00 00 05 20 00 00 00
+140 (320) : 20 02 00 00 00 00 14 00 FF 01 1F 00 01 01 00 00
+150 (336) : 00 00 00 05 12 00 00 00 00 0B 14 00 00 00 00 10
+160 (352) : 01 01 00 00 00 00 00 05 12 00 00 00 00 00 14 00
+170 (368) : BF 01 13 00 01 01 00 00 00 00 00 05 0B 00 00 00
+180 (384) : 00 0B 14 00 00 00 01 E0 01 01 00 00 00 00 00 05
+190 (400) : 0B 00 00 00 00 00 18 00 A9 00 12 00 01 02 00 00
+1A0 (416) : 00 00 00 05 20 00 00 00 21 02 00 00 00 0B 18 00
+1B0 (432) : 00 00 00 A0 01 02 00 00 00 00 00 05 20 00 00 00
+1C0 (448) : 21 02 00 00 01 01 00 00 00 00 00 05 12 00 00 00
+1D0 (464) : 01 01 00 00 00 00 00 05 12 00 00 00 00 00 00 00
+1E0 (480) : 90 00 00 00 58 00 00 00 00 04 18 00 00 00 06 00
+1F0 (496) : 38 00 00 00 20 00 00 00 24 00 49 00 33 00 38 00
+200 (512) : 30 00 00 00 01 00 00 00 00 10 00 00 01 00 00 00
+210 (528) : 10 00 00 00 28 00 00 00 28 00 00 00 01 00 00 00
+220 (544) : 00 00 00 00 00 00 00 00 18 00 00 00 03 00 00 00
+230 (560) : 00 00 00 00 00 00 00 00 A0 00 00 00 50 00 00 00
+240 (576) : 01 04 40 00 00 00 08 00 00 00 00 00 00 00 00 00
+250 (592) : 00 00 00 00 00 00 00 00 48 00 00 00 00 00 00 00
+260 (608) : 00 10 00 00 00 00 00 00 00 10 00 00 00 00 00 00
+270 (624) : 00 10 00 00 00 00 00 00 24 00 49 00 33 00 30 00
+280 (640) : 11 01 2A 00 00 00 00 00 B0 00 00 00 28 00 00 00
+290 (656) : 00 04 18 00 00 00 07 00 08 00 00 00 20 00 00 00
+2A0 (672) : 24 00 49 00 33 00 30 00 01 00 00 00 00 00 00 00
+2B0 (688) : 00 01 00 00 68 00 00 00 00 09 18 00 00 00 09 00
+2C0 (704) : 38 00 00 00 30 00 00 00 24 00 54 00 58 00 46 00
+2D0 (720) : 5F 00 44 00 41 00 54 00 41 00 00 00 00 00 00 00
+2E0 (736) : 05 00 00 00 00 00 05 00 01 00 00 00 01 00 00 00
+2F0 (752) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+300 (768) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+310 (784) : 02 00 00 00 00 00 00 00 FF FF FF FF 00 00 00 00

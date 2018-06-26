@@ -6,7 +6,7 @@ namespace RawDiskReadPOC.NTFS
     /// <summary>http://ultradefrag.sourceforge.net/doc/man/ntfs/NTFS_On_Disk_Structure.pdf</summary>
     internal struct NtfsRecord
     {
-        internal void Dump()
+        internal unsafe void Dump()
         {
             // TODO Verify inefficient decoding of the name.
             byte[] nameBytes = new byte[4];
@@ -16,6 +16,17 @@ namespace RawDiskReadPOC.NTFS
             nameBytes[3] = (byte)((Type >> 24) % 256);
             Console.WriteLine("{0}, off {1}, cnt {2}, usn {3}",
                 Encoding.ASCII.GetString(nameBytes), UsaOffset, UsaCount, Usn);
+            if (0 < UsaCount) {
+                fixed(NtfsRecord* rawRecord = &this) {
+                    ushort* pFixup = (ushort*)((byte*)rawRecord + UsaOffset);
+                    Console.Write("Fixup : {0:X4} => ", *(pFixup++));
+                    for(int index = 0; index < UsaCount; index++) {
+                        if (0 != index) { Console.Write(", "); }
+                        Console.Write("{0:X4}", *(pFixup++));
+                    }
+                    Console.WriteLine();
+                }
+            }
         }
         
         /// <summary>The type of NTFS record.When the value of Type is considered as a sequence of

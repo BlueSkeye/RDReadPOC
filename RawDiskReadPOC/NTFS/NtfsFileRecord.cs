@@ -32,7 +32,7 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe void EnumerateRecordAttributes(NtfsPartition owner, ulong recordLBA,
             ref byte* buffer, RecordAttributeEnumeratorCallbackDelegate callback)
         {
-            buffer = owner.Manager.Read(recordLBA, owner.SectorsPerCluster, buffer);
+            buffer = owner.Read(recordLBA);
             NtfsFileRecord* header = (NtfsFileRecord*)buffer;
             header->AssertRecordType();
             if (1024 < header->BytesAllocated) {

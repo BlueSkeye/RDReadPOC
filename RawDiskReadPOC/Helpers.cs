@@ -25,6 +25,12 @@ namespace RawDiskReadPOC
             Console.WriteLine();
         }
 
+        internal static string DecodeTime(ulong value)
+        {
+            if (value > long.MaxValue) { throw new ArgumentOutOfRangeException(); }
+            return (Epoch + new TimeSpan((long)value)).ToString("yyyy-MM-dd HH:mm:ss");
+        }
+
         internal static unsafe void Memcpy(byte* from, byte* to, int length)
         {
             while (sizeof(ulong) <= length) {
@@ -45,5 +51,6 @@ namespace RawDiskReadPOC
         }
 
         internal static unsafe byte* DumpedAddress;
+        private static readonly DateTime Epoch = new DateTime(1601, 1, 1);
     }
 }

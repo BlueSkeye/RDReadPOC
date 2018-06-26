@@ -12,11 +12,13 @@ namespace RawDiskReadPOC.NTFS
     /// http://dubeyko.com/development/FileSystems/NTFS/ntfsdoc.pdf
     /// https://en.wikipedia.org/wiki/NTFS
     /// </remarks>
-    internal class NtfsPartition : PartitionManager.PartitionBase
+    internal class NtfsPartition : PartitionManager.GenericPartition
     {
-        internal NtfsPartition(bool hidden, uint startSector, uint sectorCount)
+        internal NtfsPartition(IntPtr handle, bool hidden, uint startSector, uint sectorCount)
             : base(startSector, sectorCount)
         {
+            if (0 >= handle.ToInt64()) { throw new ArgumentException(); }
+            _privateHandle = handle;
             Hidden = hidden;
         }
 
@@ -35,6 +37,8 @@ namespace RawDiskReadPOC.NTFS
         {
             get { return SectorsPerCluster * BytesPerSector; }
         }
+
+        internal static NtfsPartition Current { get; set; }
 
         internal uint HeadsCount { get; private set; }
 
@@ -74,7 +78,7 @@ namespace RawDiskReadPOC.NTFS
             try {
                 for (int mdfIndex = 0; mdfIndex < 16; mdfIndex++) {
                     _metadataFileLBAs[mdfIndex] = currentRecordLBA;
-                    currentRecord = Manager.Read(currentRecordLBA, SectorsPerCluster, currentRecord);
+                    currentRecord = Read(currentRecordLBA);
                     NtfsFileRecord* header = (NtfsFileRecord*)currentRecord;
                     header->AssertRecordType();
                     NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
@@ -121,7 +125,7 @@ namespace RawDiskReadPOC.NTFS
             // - Count them
             ulong fileCount = 0;
             NtfsFileRecord* rootRecord = null;
-            _mft.EnumerateRecords(this,
+            _mft.EnumerateRecords(
                 delegate (NtfsFileRecord* record) {
                     NtfsFileNameAttribute* nameAttribute =
                         (NtfsFileNameAttribute*)record->GetAttribute(NtfsAttributeType.AttributeFileName);
@@ -138,12 +142,19 @@ namespace RawDiskReadPOC.NTFS
             if (null == rootRecord) {
                 throw new ApplicationException();
             }
+            rootRecord->Dump();
+            rootRecord->BinaryDump();
+            rootRecord->EnumerateRecordAttributes(
+                delegate(NtfsAttribute * value){
+                    value->Dump(true);
+                    return true;
+                });
             NtfsRootIndexAttribute* rootIndexAttribute =
                 (NtfsRootIndexAttribute*)rootRecord->GetAttribute(NtfsAttributeType.AttributeIndexRoot);
             if (null == rootIndexAttribute) {
                 throw new ApplicationException("Root index attribute not found.");
             }
-            Helpers.BinaryDump((byte*)rootIndexAttribute, 128);
+            Helpers.BinaryDump((byte*)rootIndexAttribute, 512);
             rootIndexAttribute->Dump();
             throw new NotImplementedException();
             //byte* mftRecord = null;
@@ -181,7 +192,7 @@ namespace RawDiskReadPOC.NTFS
                 uint readOpCount = 0;
                 for (int fileIndex = 0; fileIndex < 1024; fileIndex++) {
                     if (null == header) {
-                        buffer = Manager.ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
+                        buffer = ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
                         readOpCount++;
                         header = (NtfsFileRecord*)buffer;
                     }
@@ -222,7 +233,7 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe void EnumerateRecordAttributes(ulong recordLBA, ref byte* buffer,
             RecordAttributeEnumeratorCallbackDelegate callback)
         {
-            buffer = Manager.Read(recordLBA, SectorsPerCluster, buffer);
+            buffer = Read(recordLBA);
             NtfsFileRecord* header = (NtfsFileRecord*)buffer;
             header->AssertRecordType();
             if (1024 < header->BytesAllocated) {
@@ -290,7 +301,7 @@ namespace RawDiskReadPOC.NTFS
         {
             byte* sector = null;
             try {
-                sector = Manager.Read(StartSector, 1, sector);
+                sector = Read(StartSector);
                 if (0x55 != sector[510]) { throw new ApplicationException(); }
                 if (0xAA != sector[511]) { throw new ApplicationException(); }
                 byte* sectorPosition = sector + 3;
@@ -341,6 +352,40 @@ namespace RawDiskReadPOC.NTFS
             // TODO : Implement periodic polling.
         }
 
+        internal IPartitionClusterData Read(ulong logicalBlockAddress, uint count = 1)
+        {
+            return ReadBlocks(logicalBlockAddress, count);
+        }
+
+        /// <summary>Read a some number of sectors.</summary>
+        /// <param name="logicalBlockAddress">Address of the buffer to read.</param>
+        /// <param name="blocksCount">Number of blocks to read.</param>
+        /// <returns>Buffer address.</returns>
+        internal unsafe IPartitionClusterData ReadBlocks(ulong logicalBlockAddress, uint blocksCount = 1)
+        {
+            IPartitionClusterData result = _PartitionClusterData.CreateFromPool(ClusterSize);
+            try {
+                uint bytesPerSector = Manager.Geometry.BytesPerSector;
+                uint expectedCount = blocksCount * bytesPerSector;
+                ulong offset = logicalBlockAddress * bytesPerSector;
+                if (!Natives.SetFilePointerEx(_privateHandle, (long)offset, out offset, Natives.FILE_BEGIN)) {
+                    throw new ApplicationException();
+                }
+                uint totalBytesRead;
+                if (!Natives.ReadFile(_privateHandle, result.Data, expectedCount, out totalBytesRead, IntPtr.Zero)) {
+                    throw new ApplicationException();
+                }
+                if (totalBytesRead != expectedCount) {
+                    throw new ApplicationException();
+                }
+                return result;
+            }
+            catch {
+                result.Dispose();
+                throw;
+            }
+        }
+
         /// <summary>For testing purpose only. No real use until now.</summary>
         internal unsafe void ReadBitmap()
         {
@@ -352,7 +397,7 @@ namespace RawDiskReadPOC.NTFS
             NtfsFileRecord* header = null;
             uint readOpCount = 0;
             try {
-                buffer = Manager.ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
+                buffer = ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
                 readOpCount++;
                 header = (NtfsFileRecord*)buffer;
                 header->AssertRecordType();
@@ -379,15 +424,10 @@ namespace RawDiskReadPOC.NTFS
             finally { if (null != buffer) { Marshal.FreeCoTaskMem((IntPtr)buffer); } }
         }
 
-        internal unsafe byte* Read(ulong logicalBlockAddress, uint count = 1, byte* into = null)
-        {
-            return Manager.Read(logicalBlockAddress + this.StartSector, count, into);
-        }
-
-        internal unsafe byte* ReadBlocks(ulong logicalBlockAddress, out uint totalBytesRead,
+        internal unsafe byte* ReadBlocks(ulong logicalBlockNumber, out uint totalBytesRead,
             uint blocksCount = 1, byte* into = null)
         {
-            return Manager.ReadBlocks(logicalBlockAddress + this.StartSector, out totalBytesRead,
+            return ReadBlocks(logicalBlockNumber + this.StartSector, out totalBytesRead,
                 blocksCount, into);
         }
 
@@ -406,7 +446,7 @@ namespace RawDiskReadPOC.NTFS
             NtfsFileRecord* header = null;
             uint readOpCount = 0;
             try {
-                buffer = Manager.ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
+                buffer = ReadBlocks(currentRecordLBA, out bufferSize, SectorsPerCluster, buffer);
                 readOpCount++;
                 header = (NtfsFileRecord*)buffer;
                 header->AssertRecordType();
@@ -419,7 +459,7 @@ namespace RawDiskReadPOC.NTFS
                     NtfsNonResidentAttribute* nonResident = (0 == currentAttribute->Nonresident)
                         ? null
                         : (NtfsNonResidentAttribute*)currentAttribute;
-                    if ((null != nonResident) && ("$Bad" == nonResident->Attribute.Name)) {
+                    if ((null != nonResident) && ("$Bad" == nonResident->Header.Name)) {
                         if (0 != nonResident->InitializedSize) { throw new NotImplementedException(); }
                     }
                     currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
@@ -436,5 +476,52 @@ namespace RawDiskReadPOC.NTFS
         private ulong[] _metadataFileLBAs = new ulong[16];
         private NtfsMFTFileRecord _mft;
         private Dictionary<string, ulong> _metadataFilesLBAByName = new Dictionary<string, ulong>();
+        private static unsafe List<IntPtr> _partitionClusterDataPool = new List<IntPtr>();
+        private IntPtr _privateHandle;
+
+        private class _PartitionClusterData : IPartitionClusterData
+        {
+            private unsafe _PartitionClusterData(byte* rawData, ulong size)
+            {
+                if (null == rawData) { throw new ArgumentNullException(); }
+                if (uint.MaxValue < size) { throw new ArgumentOutOfRangeException(); }
+                _rawData = rawData;
+                _dataSize = (uint)size;
+            }
+
+            public unsafe byte* Data => _rawData;
+
+            public uint DataSize => _dataSize;
+
+            internal static unsafe _PartitionClusterData CreateFromPool(ulong clusterSize)
+            {
+                if (int.MaxValue < clusterSize) { throw new ArgumentOutOfRangeException(); }
+                List<IntPtr> pool = NtfsPartition._partitionClusterDataPool;
+                lock (pool) {
+                    byte* rawBuffer = null;
+                    int poolCount = pool.Count;
+                    IntPtr managedBuffer;
+                    if (0 == poolCount) {
+                        managedBuffer = Marshal.AllocCoTaskMem((int)clusterSize);
+                    }
+                    else {
+                        int electedIndex = poolCount - 1;
+                        managedBuffer = pool[electedIndex];
+                        pool.RemoveAt(electedIndex);
+                    }
+                    rawBuffer = (byte*)managedBuffer.ToPointer();
+                    return new _PartitionClusterData(rawBuffer, clusterSize);
+                }
+            }
+
+            public unsafe void Dispose()
+            {
+                NtfsPartition._partitionClusterDataPool.Add(new IntPtr(_rawData));
+                _rawData = null;
+            }
+
+            internal uint _dataSize;
+            private unsafe byte* _rawData;
+        }
     }
 }

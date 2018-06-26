@@ -10,7 +10,7 @@ namespace RawDiskReadPOC
     {
         private static unsafe void CountFiles()
         {
-            foreach (PartitionManager.PartitionBase partition in _partitionManager.EnumeratePartitions()) {
+            foreach (PartitionManager.GenericPartition partition in _partitionManager.EnumeratePartitions()) {
                 NtfsPartition ntfsPartition = partition as NtfsPartition;
                 if (null == ntfsPartition) { throw new NotSupportedException(); }
                 if (!partition.Active) { continue; }
@@ -28,7 +28,7 @@ namespace RawDiskReadPOC
             byte* sector = null;
             byte* mftRecord = null;
             try {
-                foreach (PartitionManager.PartitionBase partition in _partitionManager.EnumeratePartitions()) {
+                foreach (PartitionManager.GenericPartition partition in _partitionManager.EnumeratePartitions()) {
                     if (!partition.ShouldCapture) { continue; }
                     NtfsPartition ntfsPartition = partition as NtfsPartition;
                     if (null == ntfsPartition) { throw new NotSupportedException(); }
@@ -67,9 +67,11 @@ namespace RawDiskReadPOC
                 InterpretActivePartitions();
                 // Invariant check.
                 NtfsMFTFileRecord.AssertMFTRecordCachingInvariance(_partitionManager);
-                foreach (PartitionManager.PartitionBase partition in _partitionManager.EnumeratePartitions()) {
+                foreach (PartitionManager.GenericPartition partition in _partitionManager.EnumeratePartitions()) {
                     if (!partition.ShouldCapture) { continue; }
                     NtfsPartition ntfsPartition = partition as NtfsPartition;
+                    NtfsPartition.Current = ntfsPartition;
+
                     ntfsPartition.CountFiles();
                     ntfsPartition.MonitorBadClusters();
                     ntfsPartition.ReadBitmap();

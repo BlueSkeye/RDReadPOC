@@ -29,7 +29,7 @@ namespace RawDiskReadPOC.NTFS
         internal static unsafe void AssertMFTRecordCachingInvariance(PartitionManager manager)
         {
             if (null == manager) { throw new ArgumentNullException(); }
-            foreach (PartitionManager.PartitionBase partition in manager.EnumeratePartitions()) {
+            foreach (PartitionManager.GenericPartition partition in manager.EnumeratePartitions()) {
                 if (!partition.ShouldCapture) { continue; }
                 for (int index= 0; index < 5; index++) {
                     GC.Collect();
@@ -67,7 +67,7 @@ namespace RawDiskReadPOC.NTFS
             return result;
         }
 
-        internal unsafe void EnumerateRecords(NtfsPartition partition, FileRecordEnumeratorDelegate callback)
+        internal unsafe void EnumerateRecords(FileRecordEnumeratorDelegate callback)
         {
             NtfsNonResidentAttribute* dataAttribute =
                 (NtfsNonResidentAttribute*)RecordBase->GetAttribute(NtfsAttributeType.AttributeData);
@@ -75,16 +75,17 @@ namespace RawDiskReadPOC.NTFS
             if (null == dataAttribute) {
                 throw new ApplicationException();
             }
+            NtfsPartition partition = NtfsPartition.Current;
             ulong clusterSize = partition.ClusterSize;
             ulong recordsPerCluster = clusterSize / RECORD_SIZE;
             byte[] localBuffer = new byte[clusterSize];
-            Stream dataStream = dataAttribute->OpenDataStream(partition);
+            Stream dataStream = dataAttribute->OpenDataStream();
             try {
                 NtfsBitmapAttribute* bitmap = (NtfsBitmapAttribute*)RecordBase->GetAttribute(NtfsAttributeType.AttributeBitmap);
                 if (null == bitmap) { throw new AssertionException("Didn't find the $MFT bitmap attribute."); }
                 ulong currentClusterIndex = 0;
                 bool endOfStream = false;
-                foreach(ulong itemIndex in bitmap->EnumerateUsedItemIndex(partition)) {
+                foreach(ulong itemIndex in bitmap->EnumerateUsedItemIndex()) {
                     ulong targetClusterIndex = itemIndex / recordsPerCluster;
                     ulong recordIndexInCluster = itemIndex % recordsPerCluster;
                     // TODO : Seek is not supported, so we need to read the whold stream.
@@ -115,7 +116,7 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
-        internal unsafe static NtfsMFTFileRecord GetMFTRecord(PartitionManager.PartitionBase ownedBy)
+        internal unsafe static NtfsMFTFileRecord GetMFTRecord(PartitionManager.GenericPartition ownedBy)
         {
             NtfsMFTFileRecord result;
             if (!_gcPreventer.TryGetValue(ownedBy.StartSector, out result)) {

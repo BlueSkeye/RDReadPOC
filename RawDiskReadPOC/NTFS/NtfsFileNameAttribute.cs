@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System;
+using System.Text;
 
 namespace RawDiskReadPOC.NTFS
 {
@@ -6,8 +7,33 @@ namespace RawDiskReadPOC.NTFS
     /// <remarks>The filename attribute is always resident.</remarks>
     internal unsafe struct NtfsFileNameAttribute
     {
-        internal NtfsResidentAttribute BaseAttribute;
-        /// <summary>The file reference number of the directory in which the filename is entered</summary>
+        internal void Dump()
+        {
+            Header.AssertResident();
+            Header.Dump();
+            Console.WriteLine("\tRefNum 0x{0:X8}",
+                DirectoryFileReferenceNumber);
+            Console.WriteLine("\tCR {0} ({1})",
+                CreationTime, Helpers.DecodeTime(CreationTime));
+            Console.WriteLine("\tCH {0} ({1})",
+                ChangeTime, Helpers.DecodeTime(ChangeTime));
+            Console.WriteLine("\tLW {0} ({1})",
+                LastWriteTime, Helpers.DecodeTime(LastWriteTime));
+            Console.WriteLine("\tLA {0} ({1})",
+                LastAccessTime, Helpers.DecodeTime(LastAccessTime));
+            Console.WriteLine("\tAlloc {0}, Size {1}",
+                AllocatedSize, DataSize);
+            Console.WriteLine("\tAttr {0} : {1}",
+                FileAttributes, NtfsStandardInformationAttribute.DecodeAttributes(FileAttributes));
+            Console.WriteLine("\tNL {0}, Ty {1} ({2})",
+                NameLength, NameType, GetName());
+        }
+
+        // TODO : Provide 2 properties for dir file ref number splitting.
+        internal NtfsResidentAttribute Header;
+        /// <summary>The file reference number of the directory in which the filename is entered.
+        /// This is a composite number. The first 6 bytes are a parent reference number while the 2 lower
+        /// bytes are a sequence number within the parent record.</summary>
         internal ulong DirectoryFileReferenceNumber;
         /// <summary>The time when the file was created in the standard time format (that is. the number
         /// of 100-nanosecond intervals since January 1, 1601). This member is only updated when the

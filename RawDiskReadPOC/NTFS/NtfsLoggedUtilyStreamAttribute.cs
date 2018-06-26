@@ -5,9 +5,8 @@ using System.Runtime.InteropServices;
 
 namespace RawDiskReadPOC.NTFS
 {
-    /// <summary>Provides additional methods specific to the bitmap attribute.</summary>
     [StructLayout(LayoutKind.Explicit)]
-    internal struct NtfsBitmapAttribute
+    internal struct NtfsLoggedUtilyStreamAttribute
     {
         internal void Dump()
         {
@@ -40,25 +39,6 @@ namespace RawDiskReadPOC.NTFS
             }
             finally { if (null != input) { input.Close(); } }
             return;
-        }
-
-        /// <summary>Open the data stream for this bitmap attribute and scan each bit
-        /// yielding either true or false if bit is set or cleared.</summary>
-        /// <returns></returns>
-        internal IEnumerable<ulong> EnumerateUsedItemIndex()
-        {
-            ulong indexValue = 0;
-            using (Stream input = NonResidentHeader.OpenDataStream()) {
-                int @byte;
-                while (-1 != (@byte = input.ReadByte())) {
-                    if (0 == @byte) { continue; }
-                    for(int index = 0; index < 8; index++) {
-                        if (0 != ((byte)@byte & (1 << index))) { yield return indexValue; }
-                        indexValue++;
-                    }
-                }
-            }
-            yield break;
         }
 
         [FieldOffset(0)]

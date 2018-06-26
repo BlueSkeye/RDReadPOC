@@ -52,14 +52,18 @@
     <Compile Include="AssertionException.cs" />
     <Compile Include="DiskGeometry.cs" />
     <Compile Include="Helpers.cs" />
+    <Compile Include="IPartitionClusterData.cs" />
     <Compile Include="Natives.cs" />
+    <Compile Include="NTFS\NtfsIndexEntry.cs" />
+    <Compile Include="NTFS\NtfsLoggedUtilyStreamAttribute.cs" />
+    <Compile Include="NTFS\NtfsNodeHeader.cs" />
     <Compile Include="NTFS\NtfsPartition.cs" />
     <Compile Include="NTFS\Constants.cs" />
     <Compile Include="NTFS\NtfsAttribute.cs" />
     <Compile Include="NTFS\NtfsAttributeListAttribute.cs" />
     <Compile Include="NTFS\NtfsAttributeType.cs" />
     <Compile Include="NTFS\NtfsBitmapAttribute.cs" />
-    <Compile Include="NTFS\NtfsDirectoryEntry.cs" />
+    <Compile Include="NTFS\NtfsDirectoryIndexEntry.cs" />
     <Compile Include="NTFS\NtfsDirectoryIndex.cs" />
     <Compile Include="NTFS\NtfsEAAttribute.cs" />
     <Compile Include="NTFS\NtfsEAInformation.cs" />
@@ -71,6 +75,7 @@
     <Compile Include="NTFS\NtfsRecord.cs" />
     <Compile Include="NTFS\NtfsResidentAttribute.cs" />
     <Compile Include="NTFS\NtfsRootIndexAttribute.cs" />
+    <Compile Include="NTFS\NtfsSecurityDescriptorAttribute.cs" />
     <Compile Include="NTFS\NtfsStandardInformationAttribute.cs" />
     <Compile Include="NTFS\NtfsVolumeInformationAttribute.cs" />
     <Compile Include="NTFS\NtfsWellKnownMetadataFiles.cs" />
