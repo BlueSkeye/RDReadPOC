@@ -144,9 +144,9 @@ namespace RawDiskReadPOC
 
             protected abstract IPartitionClusterData GetClusterBuffer();
 
-            internal IPartitionClusterData Read(ulong logicalBlockAddress, uint count = 1)
+            internal IPartitionClusterData Read(ulong logicalBlockAddress, uint blocksCount = 1)
             {
-                return ReadBlocks(logicalBlockAddress, count);
+                return ReadBlocks(logicalBlockAddress, blocksCount);
             }
 
             /// <summary>Read a some number of sectors.</summary>
@@ -160,12 +160,15 @@ namespace RawDiskReadPOC
                     uint bytesPerSector = Singleton.Geometry.BytesPerSector;
                     uint expectedCount = blocksCount * bytesPerSector;
                     ulong offset = logicalBlockAddress * bytesPerSector;
-                    if (!Natives.SetFilePointerEx(_handle, (long)offset, out offset, Natives.FILE_BEGIN)) {
-                        throw new ApplicationException();
-                    }
                     uint totalBytesRead;
-                    if (!Natives.ReadFile(_handle, result.Data, expectedCount, out totalBytesRead, IntPtr.Zero)) {
-                        throw new ApplicationException();
+                    // Prevent concurrent reads on this partition.
+                    lock (this) {
+                        if (!Natives.SetFilePointerEx(_handle, (long)offset, out offset, Natives.FILE_BEGIN)) {
+                            throw new ApplicationException();
+                        }
+                        if (!Natives.ReadFile(_handle, result.Data, expectedCount, out totalBytesRead, IntPtr.Zero)) {
+                            throw new ApplicationException();
+                        }
                     }
                     if (totalBytesRead != expectedCount) {
                         throw new ApplicationException();
@@ -196,27 +199,28 @@ namespace RawDiskReadPOC
 
             private class MinimalPartitionClusterDataImpl : IPartitionClusterData
             {
-                public MinimalPartitionClusterDataImpl()
+                public unsafe MinimalPartitionClusterDataImpl()
                 {
                     // TODO : Add flexibility. No hardcoded size.
-                    _nativeData = Marshal.AllocCoTaskMem(16 * 1024);
+                    DataSize = 16 * 1024;
+                    _nativeData = (byte*)Marshal.AllocCoTaskMem((int)DataSize).ToPointer();
                 }
 
-                public uint DataSize => throw new NotImplementedException();
+                public uint DataSize { get; private set; }
 
-                public unsafe byte* Data => throw new NotImplementedException();
+                public unsafe byte* Data => _nativeData;
 
-                public void Dispose()
+                public unsafe void Dispose()
                 {
                     lock (this) {
-                        if (IntPtr.Zero != _nativeData) {
-                            Marshal.FreeCoTaskMem(_nativeData);
-                            _nativeData = IntPtr.Zero;
+                        if (null != _nativeData) {
+                            Marshal.FreeCoTaskMem(new IntPtr(_nativeData));
+                            _nativeData = null;
                         }
                     }
                 }
 
-                private IntPtr _nativeData;
+                private unsafe byte* _nativeData;
             }
         }
     }

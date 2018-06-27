@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 
 using RawDiskReadPOC.NTFS;
@@ -45,6 +46,14 @@ namespace RawDiskReadPOC
 
         public static unsafe int Main(string[] args)
         {
+            AppDomain.CurrentDomain.FirstChanceException += delegate (object sender, FirstChanceExceptionEventArgs e) {
+                Exception ex = e.Exception;
+                return;
+            };
+            AppDomain.CurrentDomain.UnhandledException += delegate (object sender, UnhandledExceptionEventArgs e) {
+                Exception ex = e.ExceptionObject as Exception;
+                return;
+            };
             Assembly entryAssembly = Assembly.GetEntryAssembly();
             AssemblyName entryAssemblyName = entryAssembly.GetName();
             Console.WriteLine("{0} v{1}", entryAssemblyName.Name, entryAssemblyName.Version.ToString());

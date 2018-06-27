@@ -6,6 +6,13 @@ namespace RawDiskReadPOC.NTFS
     /// attributes.</summary>
     internal struct NtfsFileRecord
     {
+        internal unsafe void ApplyFixups()
+        {
+            fixed(NtfsFileRecord* nativeRecord = &this) {
+                throw new NotImplementedException();
+            }
+        }
+
         internal void AssertRecordType()
         {
             if (Constants.FileRecordMarker != Ntfs.Type) {
