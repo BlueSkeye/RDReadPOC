@@ -78,6 +78,18 @@ namespace RawDiskReadPOC.NTFS
                 AttributeNumber, Name ?? "UNNAMED");
         }
 
+        internal unsafe uint GetTotalSize()
+        {
+            switch (AttributeType) {
+                case NtfsAttributeType.AttributeIndexRoot:
+                    fixed(NtfsAttribute* baseAttribute = &this) {
+                        return ((NtfsRootIndexAttribute*)baseAttribute)->GetTotalSize();
+                    }
+                default:
+                    return Length;
+            }
+        }
+
         internal NtfsAttributeType AttributeType;
         /// <summary>The size, in bytes, of the resident part of the attribute.</summary>
         internal uint Length;

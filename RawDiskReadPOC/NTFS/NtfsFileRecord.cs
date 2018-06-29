@@ -8,9 +8,7 @@ namespace RawDiskReadPOC.NTFS
     {
         internal unsafe void ApplyFixups()
         {
-            fixed(NtfsFileRecord* nativeRecord = &this) {
-                throw new NotImplementedException();
-            }
+            Ntfs.ApplyFixups(BytesInUse);
         }
 
         internal void AssertRecordType()
@@ -39,7 +37,7 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe void EnumerateRecordAttributes(NtfsPartition owner, ulong recordLBA,
             ref byte* buffer, RecordAttributeEnumeratorCallbackDelegate callback)
         {
-            using (IPartitionClusterData data = owner.Read(recordLBA)) {
+            using (IPartitionClusterData data = owner.ReadSectors(recordLBA)) {
                 buffer = data.Data;
                 NtfsFileRecord* header = (NtfsFileRecord*)buffer;
                 header->AssertRecordType();

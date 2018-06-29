@@ -58,12 +58,12 @@ namespace RawDiskReadPOC.NTFS
         internal static unsafe NtfsMFTFileRecord Create(NtfsPartition owner, byte* rawData)
         {
             if (null == owner) { throw new ArgumentNullException(); }
-            if (_gcPreventer.ContainsKey(owner.StartSector)) {
+            if (_gcPreventer.ContainsKey(owner)) {
                 throw new InvalidOperationException();
             }
             NtfsMFTFileRecord result = new NtfsMFTFileRecord(rawData);
             result.AssertNoOverflowingAttribute();
-            _gcPreventer.Add(owner.StartSector, result);
+            _gcPreventer.Add(owner, result);
             return result;
         }
 
@@ -83,11 +83,17 @@ namespace RawDiskReadPOC.NTFS
             try {
                 NtfsBitmapAttribute* bitmap = (NtfsBitmapAttribute*)RecordBase->GetAttribute(NtfsAttributeType.AttributeBitmap);
                 if (null == bitmap) { throw new AssertionException("Didn't find the $MFT bitmap attribute."); }
+                IEnumerator<bool> bitmapEnumerator = bitmap->GetContentEnumerator();
                 ulong currentClusterIndex = 0;
                 bool endOfStream = false;
-                foreach(ulong itemIndex in bitmap->EnumerateUsedItemIndex()) {
-                    ulong targetClusterIndex = itemIndex / recordsPerCluster;
-                    ulong recordIndexInCluster = itemIndex % recordsPerCluster;
+                ulong sectorIndex = 0;
+                while (bitmapEnumerator.MoveNext()) {
+                    sectorIndex++;
+                    if (!bitmapEnumerator.Current) {
+                        continue;
+                    }
+                    ulong targetClusterIndex = sectorIndex / recordsPerCluster;
+                    ulong sectorIndexInCluster = sectorIndex % recordsPerCluster;
                     // TODO : Seek is not supported, so we need to read the whold stream.
                     // CONSIDER : Implement Seek
                     while (currentClusterIndex <= targetClusterIndex) {
@@ -103,7 +109,7 @@ namespace RawDiskReadPOC.NTFS
                     }
                     if (endOfStream) { break; }
                     fixed(byte* nativeBuffer = localBuffer) {
-                        byte* nativeRecord = nativeBuffer + (RECORD_SIZE * recordIndexInCluster);
+                        byte* nativeRecord = nativeBuffer + (RECORD_SIZE * sectorIndexInCluster);
                         // TODO Make sure the result is inside the buffer.
                         if (!callback((NtfsFileRecord*)nativeRecord)) { break; }
                     }
@@ -119,7 +125,7 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe static NtfsMFTFileRecord GetMFTRecord(PartitionManager.GenericPartition ownedBy)
         {
             NtfsMFTFileRecord result;
-            if (!_gcPreventer.TryGetValue(ownedBy.StartSector, out result)) {
+            if (!_gcPreventer.TryGetValue(ownedBy, out result)) {
                 throw new InvalidOperationException();
             }
             return result;
@@ -131,8 +137,8 @@ namespace RawDiskReadPOC.NTFS
         }
 
         private const ulong RECORD_SIZE = 1024;
-        private static Dictionary<uint, NtfsMFTFileRecord> _gcPreventer =
-            new Dictionary<uint, NtfsMFTFileRecord>();
+        private static Dictionary<PartitionManager.GenericPartition, NtfsMFTFileRecord> _gcPreventer =
+            new Dictionary<PartitionManager.GenericPartition, NtfsMFTFileRecord>();
         internal unsafe byte* _localBuffer;
     }
 }

@@ -34,6 +34,12 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        internal uint GetTotalSize()
+        {
+            uint result = Header.Header.Length;
+            return result;
+        }
+
         internal NtfsResidentAttribute Header;
         // This part is 0x10/16 bytes
         /// <summary>The type of the attribute that is indexed</summary>

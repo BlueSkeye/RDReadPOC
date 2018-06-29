@@ -32,6 +32,7 @@ namespace RawDiskReadPOC
                 foreach (PartitionManager.GenericPartition partition in _partitionManager.EnumeratePartitions()) {
                     if (!partition.ShouldCapture) { continue; }
                     NtfsPartition ntfsPartition = partition as NtfsPartition;
+                    NtfsPartition.Current = ntfsPartition;
                     if (null == ntfsPartition) { throw new NotSupportedException(); }
                     ntfsPartition.InterpretBootSector();
                     ntfsPartition.CaptureMetadataFilePointers();

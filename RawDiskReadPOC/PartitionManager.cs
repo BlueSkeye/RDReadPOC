@@ -28,7 +28,7 @@ namespace RawDiskReadPOC
         internal unsafe void Discover()
         {
             VolumePartition fakePartition = new VolumePartition(_rawHandle, 0, 16);
-            using (IPartitionClusterData rawData = fakePartition.Read(0)) {
+            using (IPartitionClusterData rawData = fakePartition.ReadSectors(0)) {
                 uint minSector = uint.MaxValue;
                 uint maxSector = 0;
                 byte* masterBootRecord = rawData.Data;
@@ -86,6 +86,8 @@ namespace RawDiskReadPOC
 
             internal bool Active { get; private set; }
 
+            internal abstract uint BytesPerSector { get; }
+
             internal IntPtr Handle { get; private set; }
 
             internal uint SectorCount { get; private set; }
@@ -142,32 +144,43 @@ namespace RawDiskReadPOC
                 return result;
             }
 
-            protected abstract IPartitionClusterData GetClusterBuffer();
-
-            internal IPartitionClusterData Read(ulong logicalBlockAddress, uint blocksCount = 1)
-            {
-                return ReadBlocks(logicalBlockAddress, blocksCount);
-            }
+            protected abstract IPartitionClusterData GetClusterBufferChain(uint size = 0);
 
             /// <summary>Read a some number of sectors.</summary>
-            /// <param name="logicalBlockAddress">Address of the buffer to read.</param>
-            /// <param name="blocksCount">Number of blocks to read.</param>
+            /// <param name="logicalSectorId">Logical identifier of the first sector to be read.</param>
+            /// <param name="sectorsCount">Number of sectors to read.</param>
             /// <returns>Buffer address.</returns>
-            internal unsafe IPartitionClusterData ReadBlocks(ulong logicalBlockAddress, uint blocksCount = 1)
+            internal unsafe IPartitionClusterData ReadSectors(ulong logicalSectorId, uint sectorsCount = 1)
             {
-                IPartitionClusterData result = GetClusterBuffer();
+                IPartitionClusterData result = GetClusterBufferChain(sectorsCount * BytesPerSector);
                 try {
                     uint bytesPerSector = Singleton.Geometry.BytesPerSector;
-                    uint expectedCount = blocksCount * bytesPerSector;
-                    ulong offset = logicalBlockAddress * bytesPerSector;
-                    uint totalBytesRead;
+                    uint expectedCount = sectorsCount * bytesPerSector;
+                    result = GetClusterBufferChain(expectedCount);
+                    ulong offset = (logicalSectorId + StartSector) * bytesPerSector;
+                    uint totalBytesRead = 0;
                     // Prevent concurrent reads on this partition.
-                    lock (this) {
+                    lock (_ioLock) {
                         if (!Natives.SetFilePointerEx(_handle, (long)offset, out offset, Natives.FILE_BEGIN)) {
+                            int error = Marshal.GetLastWin32Error();
                             throw new ApplicationException();
                         }
-                        if (!Natives.ReadFile(_handle, result.Data, expectedCount, out totalBytesRead, IntPtr.Zero)) {
+                        if (result.GetChainLength() < expectedCount) {
                             throw new ApplicationException();
+                        }
+                        uint remainingExpectation = expectedCount;
+                        for (IPartitionClusterData currentData = result; null != currentData; currentData = currentData.NextInChain) {
+                            uint readSize = remainingExpectation;
+                            if (readSize > result.DataSize) {
+                                readSize = result.DataSize;
+                            }
+                            uint effectiveReadSize;
+                            if (!Natives.ReadFile(_handle, result.Data, readSize, out effectiveReadSize, IntPtr.Zero)) {
+                                int error = Marshal.GetLastWin32Error();
+                                throw new ApplicationException();
+                            }
+                            totalBytesRead += effectiveReadSize;
+                            remainingExpectation -= effectiveReadSize;
                         }
                     }
                     if (totalBytesRead != expectedCount) {
@@ -176,12 +189,20 @@ namespace RawDiskReadPOC
                     return result;
                 }
                 catch {
-                    result.Dispose();
+                    if (null != result) {
+                        result.Dispose();
+                    }
                     throw;
                 }
             }
 
+            internal unsafe void SeekTo(ulong logicalBlockAddress)
+            {
+                PartitionManager.Singleton.SeekTo(logicalBlockAddress + this.StartSector);
+            }
+
             private IntPtr _handle;
+            private object _ioLock = new object();
         }
 
         private class VolumePartition : GenericPartition
@@ -192,23 +213,32 @@ namespace RawDiskReadPOC
                 return;
             }
 
-            protected override IPartitionClusterData GetClusterBuffer()
+            internal override uint BytesPerSector => DefaultSectorSize;
+
+            protected override IPartitionClusterData GetClusterBufferChain(uint count)
             {
-                return new MinimalPartitionClusterDataImpl();
+                return new MinimalPartitionClusterDataImpl(count);
             }
+
+            private uint DefaultSectorSize = 512;
 
             private class MinimalPartitionClusterDataImpl : IPartitionClusterData
             {
-                public unsafe MinimalPartitionClusterDataImpl()
+                public unsafe MinimalPartitionClusterDataImpl(uint count)
                 {
+                    if (0 == count) {
+                        throw new ArgumentOutOfRangeException();
+                    }
                     // TODO : Add flexibility. No hardcoded size.
-                    DataSize = 16 * 1024;
+                    DataSize = AllocationChunkSize * (1 + ((count - 1) / AllocationChunkSize));
                     _nativeData = (byte*)Marshal.AllocCoTaskMem((int)DataSize).ToPointer();
                 }
 
                 public uint DataSize { get; private set; }
 
                 public unsafe byte* Data => _nativeData;
+
+                public IPartitionClusterData NextInChain => null;
 
                 public unsafe void Dispose()
                 {
@@ -220,6 +250,7 @@ namespace RawDiskReadPOC
                     }
                 }
 
+                private const int AllocationChunkSize = 1024;
                 private unsafe byte* _nativeData;
             }
         }
