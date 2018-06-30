@@ -548,6 +548,10 @@ namespace RawDiskReadPOC.NTFS
                         else {
                             int electedIndex = poolCount - 1;
                             managedBuffer = pool[electedIndex];
+                            if (FeaturesContext.DataPoolChecksEnabled) {
+                                Console.WriteLine("Reusing pointer 0x{0:X8} from pool index {1}",
+                                    managedBuffer.ToInt64(), electedIndex);
+                            }
                             pool.RemoveAt(electedIndex);
                             poolCount--;
                         }
@@ -568,9 +572,17 @@ namespace RawDiskReadPOC.NTFS
                     for (_PartitionClusterData disposed = this; null != disposed; disposed = (_PartitionClusterData)disposed.NextInChain) {
                         _partitionClusterDataUsedPool.Remove(disposed);
                         if (!NonPooled) {
-                            NtfsPartition._partitionClusterDataFreePool.Add(new IntPtr(_rawData));
+                            if (null == disposed._rawData) {
+                                throw new ApplicationException();
+                            }
+                            IntPtr managedBuffer = new IntPtr(disposed._rawData);
+                            NtfsPartition._partitionClusterDataFreePool.Add(managedBuffer);
+                            if (FeaturesContext.DataPoolChecksEnabled) {
+                                Console.WriteLine("Returning pointer 0x{0:X8} to pool",
+                                    managedBuffer.ToInt64());
+                            }
                         }
-                        _rawData = null;
+                        disposed._rawData = null;
                     }
                 }
             }
