@@ -79,12 +79,13 @@ namespace RawDiskReadPOC.NTFS
             ulong clusterSize = partition.ClusterSize;
             ulong mftRecordPerCluster = clusterSize / partition.MFTEntrySize;
             ulong sectorsPerMFTRecord = partition.MFTEntrySize / partition.BytesPerSector;
-            // Invariant check
-            if (0 != (clusterSize % partition.MFTEntrySize)) {
-                throw new ApplicationException();
-            }
-            if (0 != (partition.MFTEntrySize % partition.BytesPerSector)) {
-                throw new ApplicationException();
+            if (FeaturesContext.InvariantChecksEnabled) {
+                if (0 != (clusterSize % partition.MFTEntrySize)) {
+                    throw new ApplicationException();
+                }
+                if (0 != (partition.MFTEntrySize % partition.BytesPerSector)) {
+                    throw new ApplicationException();
+                }
             }
             ulong recordsPerCluster = clusterSize / RECORD_SIZE;
             byte[] localBuffer = new byte[clusterSize];

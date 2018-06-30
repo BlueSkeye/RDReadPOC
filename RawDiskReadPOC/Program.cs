@@ -21,6 +21,16 @@ namespace RawDiskReadPOC
             }
         }
 
+        private static void DisplayVersion()
+        {
+            Assembly entryAssembly = Assembly.GetEntryAssembly();
+            AssemblyName entryAssemblyName = entryAssembly.GetName();
+            Console.WriteLine("{0} v{1}", entryAssemblyName.Name, entryAssemblyName.Version.ToString());
+            if (FeaturesContext.InvariantChecksEnabled) {
+                Console.WriteLine("Invariant checks enabled.");
+            }
+        }
+
         private static unsafe void FindFile(string filename)
         {
             throw new NotImplementedException();
@@ -58,9 +68,7 @@ namespace RawDiskReadPOC
                 Exception ex = e.ExceptionObject as Exception;
                 return;
             };
-            Assembly entryAssembly = Assembly.GetEntryAssembly();
-            AssemblyName entryAssemblyName = entryAssembly.GetName();
-            Console.WriteLine("{0} v{1}", entryAssemblyName.Name, entryAssemblyName.Version.ToString());
+            DisplayVersion();
 
             IntPtr handle = IntPtr.Zero;
             int nativeError;
@@ -78,8 +86,9 @@ namespace RawDiskReadPOC
                 _partitionManager = new PartitionManager(handle, geometry);
                 _partitionManager.Discover();
                 InterpretActivePartitions();
-                // Invariant check.
-                NtfsMFTFileRecord.AssertMFTRecordCachingInvariance(_partitionManager);
+                if (FeaturesContext.InvariantChecksEnabled) {
+                    NtfsMFTFileRecord.AssertMFTRecordCachingInvariance(_partitionManager);
+                }
                 int partitionIndex = 0;
                 foreach (GenericPartition partition in _partitionManager.EnumeratePartitions()) {
                     if (!partition.ShouldCapture) { continue; }

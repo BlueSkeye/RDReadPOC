@@ -291,10 +291,10 @@ namespace RawDiskReadPOC.NTFS
             //int totalIndexedClusters = 0;
             //for (ulong offset = 0; offset < initializedSize; offset += (uint)lastReadCount) {
             //    lastReadCount = bitmapStream.Read(bitmapBuffer, 0, bitmapBufferLength);
-            //    // Invariant check
+            //                if (FeaturesContext.InvariantChecksEnabled) {
             //    if (bitmapBufferLength < lastReadCount) { throw new ApplicationException(); }
-            //    // Invariant check
             //    if (0 == lastReadCount) { throw new ApplicationException(); }
+            //      }
             //    // For debugging purpose
             //    for (int index = 0; index < lastReadCount; index++) {
             //        byte item = bitmapBuffer[index];

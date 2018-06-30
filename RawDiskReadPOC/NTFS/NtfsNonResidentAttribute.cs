@@ -56,9 +56,10 @@ namespace RawDiskReadPOC.NTFS
                     });
                     previousRunLCN = thisRunLCN;
                 }
-                // Invariant check.
-                if (this.HighVcn < this.LowVcn) {
-                    throw new ApplicationException();
+                if (FeaturesContext.InvariantChecksEnabled) {
+                    if (this.HighVcn < this.LowVcn) {
+                        throw new ApplicationException();
+                    }
                 }
                 ulong totalVCNs = this.HighVcn - this.LowVcn + 1;
                 ulong vcnSumInChunks = 0;
@@ -230,9 +231,10 @@ namespace RawDiskReadPOC.NTFS
                             if (readSectorsCount > remainingSectorsInChunk) {
                                 readSectorsCount = (uint)remainingSectorsInChunk;
                             }
-                            // Invariant control.
-                            if (0 != (readSectorsCount % sectorsPerCluster)) {
-                                throw new ApplicationException();
+                            if (FeaturesContext.InvariantChecksEnabled) {
+                                if (0 != (readSectorsCount % sectorsPerCluster)) {
+                                    throw new ApplicationException();
+                                }
                             }
                             // Perform read and reinitialize some internal values.
                             ulong readFromSector = readFromCluster * sectorsPerCluster;
@@ -257,8 +259,9 @@ namespace RawDiskReadPOC.NTFS
                         ulong effectiveRead = (remainingExpectedBytes < _clusterData.DataSize)
                             ? remainingExpectedBytes
                             : _clusterData.DataSize;
-                        // Invariant check.
-                        if (int.MaxValue < effectiveRead) { throw new ApplicationException(); }
+                        if (FeaturesContext.InvariantChecksEnabled) {
+                            if (int.MaxValue < effectiveRead) { throw new ApplicationException(); }
+                        }
                         _clusterDataPosition += (int)effectiveRead;
                         remainingExpectedBytes -= effectiveRead;
                         result += (int)effectiveRead;
