@@ -31,6 +31,15 @@ namespace RawDiskReadPOC
             return (Epoch + new TimeSpan((long)value)).ToString("yyyy-MM-dd HH:mm:ss");
         }
 
+        internal static uint GetChainItemsCount(this IPartitionClusterData data)
+        {
+            uint result = 0;
+            for (IPartitionClusterData scannedData = data; null != scannedData; scannedData = scannedData.NextInChain) {
+                result++;
+            }
+            return result;
+        }
+
         internal static uint GetChainLength(this IPartitionClusterData data)
         {
             uint result = 0;

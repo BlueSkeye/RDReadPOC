@@ -29,7 +29,7 @@ namespace RawDiskReadPOC.NTFS
         internal static unsafe void AssertMFTRecordCachingInvariance(PartitionManager manager)
         {
             if (null == manager) { throw new ArgumentNullException(); }
-            foreach (PartitionManager.GenericPartition partition in manager.EnumeratePartitions()) {
+            foreach (GenericPartition partition in manager.EnumeratePartitions()) {
                 if (!partition.ShouldCapture) { continue; }
                 for (int index= 0; index < 5; index++) {
                     GC.Collect();
@@ -77,52 +77,61 @@ namespace RawDiskReadPOC.NTFS
             }
             NtfsPartition partition = NtfsPartition.Current;
             ulong clusterSize = partition.ClusterSize;
+            ulong mftRecordPerCluster = clusterSize / partition.MFTEntrySize;
+            ulong sectorsPerMFTRecord = partition.MFTEntrySize / partition.BytesPerSector;
+            // Invariant check
+            if (0 != (clusterSize % partition.MFTEntrySize)) {
+                throw new ApplicationException();
+            }
+            if (0 != (partition.MFTEntrySize % partition.BytesPerSector)) {
+                throw new ApplicationException();
+            }
             ulong recordsPerCluster = clusterSize / RECORD_SIZE;
             byte[] localBuffer = new byte[clusterSize];
-            Stream dataStream = dataAttribute->OpenDataStream();
+            Stream mftDataStream = dataAttribute->OpenDataStream();
             try {
                 NtfsBitmapAttribute* bitmap = (NtfsBitmapAttribute*)RecordBase->GetAttribute(NtfsAttributeType.AttributeBitmap);
                 if (null == bitmap) { throw new AssertionException("Didn't find the $MFT bitmap attribute."); }
+                bitmap->Dump();
                 IEnumerator<bool> bitmapEnumerator = bitmap->GetContentEnumerator();
-                ulong currentClusterIndex = 0;
                 bool endOfStream = false;
-                ulong sectorIndex = 0;
+                ulong recordIndex = 0;
                 while (bitmapEnumerator.MoveNext()) {
-                    sectorIndex++;
+                    recordIndex++;
                     if (!bitmapEnumerator.Current) {
                         continue;
                     }
-                    ulong targetClusterIndex = sectorIndex / recordsPerCluster;
-                    ulong sectorIndexInCluster = sectorIndex % recordsPerCluster;
-                    // TODO : Seek is not supported, so we need to read the whold stream.
-                    // CONSIDER : Implement Seek
-                    while (currentClusterIndex <= targetClusterIndex) {
-                        int readCount = dataStream.Read(localBuffer, 0, (int)clusterSize);
-                        if (0 == readCount) {
-                            endOfStream = true;
-                            break;
-                        }
-                        if ((int)clusterSize != readCount) {
-                            throw new ApplicationException();
-                        }
-                        currentClusterIndex++;
+                    ulong targetClusterIndex = mftRecordPerCluster / recordIndex ;
+                    ulong sectorIndexInCluster = (recordIndex % mftRecordPerCluster) * sectorsPerMFTRecord;
+                    ulong targetPosition = targetClusterIndex * clusterSize;
+                    if (long.MaxValue < targetPosition) {
+                        throw new ApplicationException();
                     }
-                    if (endOfStream) { break; }
+                    mftDataStream.Seek((long)(targetPosition), SeekOrigin.Begin);
+                    int readCount = mftDataStream.Read(localBuffer, 0, (int)clusterSize);
+                    if (0 == readCount) {
+                        endOfStream = true;
+                        break;
+                    }
+                    if ((int)clusterSize != readCount) {
+                        throw new ApplicationException();
+                    }
                     fixed(byte* nativeBuffer = localBuffer) {
+                        Helpers.BinaryDump(nativeBuffer, (uint)clusterSize);
                         byte* nativeRecord = nativeBuffer + (RECORD_SIZE * sectorIndexInCluster);
                         // TODO Make sure the result is inside the buffer.
                         if (!callback((NtfsFileRecord*)nativeRecord)) { break; }
                     }
                 }
-                if (null != dataStream) { dataStream.Close(); }
+                if (null != mftDataStream) { mftDataStream.Close(); }
             }
             catch {
-                if (null != dataStream) { dataStream.Close(); }
+                if (null != mftDataStream) { mftDataStream.Close(); }
                 throw;
             }
         }
 
-        internal unsafe static NtfsMFTFileRecord GetMFTRecord(PartitionManager.GenericPartition ownedBy)
+        internal unsafe static NtfsMFTFileRecord GetMFTRecord(GenericPartition ownedBy)
         {
             NtfsMFTFileRecord result;
             if (!_gcPreventer.TryGetValue(ownedBy, out result)) {
@@ -137,8 +146,8 @@ namespace RawDiskReadPOC.NTFS
         }
 
         private const ulong RECORD_SIZE = 1024;
-        private static Dictionary<PartitionManager.GenericPartition, NtfsMFTFileRecord> _gcPreventer =
-            new Dictionary<PartitionManager.GenericPartition, NtfsMFTFileRecord>();
+        private static Dictionary<GenericPartition, NtfsMFTFileRecord> _gcPreventer =
+            new Dictionary<GenericPartition, NtfsMFTFileRecord>();
         internal unsafe byte* _localBuffer;
     }
 }

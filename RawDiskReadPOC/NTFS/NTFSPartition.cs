@@ -12,7 +12,7 @@ namespace RawDiskReadPOC.NTFS
     /// http://dubeyko.com/development/FileSystems/NTFS/ntfsdoc.pdf
     /// https://en.wikipedia.org/wiki/NTFS
     /// </remarks>
-    internal class NtfsPartition : PartitionManager.GenericPartition
+    internal class NtfsPartition : GenericPartition
     {
         internal NtfsPartition(IntPtr handle, bool hidden, uint startSector, uint sectorCount)
             : base(handle, startSector, sectorCount)
@@ -32,7 +32,7 @@ namespace RawDiskReadPOC.NTFS
             get { return _bytesPerSector; }
         }
 
-        internal ulong ClustersPerFileRecordSegment { get; private set; }
+        internal ulong MFTEntrySize { get; private set; }
 
         internal ulong ClustersPerIndexBuffer { get; private set; }
 
@@ -341,7 +341,7 @@ namespace RawDiskReadPOC.NTFS
                 byte* sector = clusterData.Data;
                 if (0x55 != sector[510]) { throw new ApplicationException(); }
                 if (0xAA != sector[511]) { throw new ApplicationException(); }
-                byte* sectorPosition = sector + 3;
+                byte* sectorPosition = sector + 3; // Skip jump instruction.
                 // Verify OEMID field conformance.
                 int OEMIDlength = Constants.OEMID.Length;
                 for(int index = 0; index < OEMIDlength; index++) {
@@ -365,7 +365,7 @@ namespace RawDiskReadPOC.NTFS
                 MFTClusterNumber = *(ulong*)(sectorPosition); sectorPosition += sizeof(ulong);
                 MFTMirrorClusterNumber = *(ulong*)(sectorPosition); sectorPosition += sizeof(ulong);
                 sbyte rawClusteringValue = *(sbyte*)(sectorPosition++);
-                ClustersPerFileRecordSegment = (0 < rawClusteringValue)
+                MFTEntrySize = (0 < rawClusteringValue)
                     ? (byte)rawClusteringValue
                     : (1UL << (-rawClusteringValue));
                 sectorPosition += 3; // Unused
@@ -512,6 +512,20 @@ namespace RawDiskReadPOC.NTFS
 
             public IPartitionClusterData NextInChain { get; private set; }
 
+            public unsafe void BinaryDump()
+            {
+                Console.WriteLine("-------- CLUSTER DATA -----------");
+                Helpers.BinaryDump(_rawData, _dataSize);
+                Console.WriteLine();
+            }
+
+            public void BinaryDumpChain()
+            {
+                for(_PartitionClusterData item = this; null != item; item = (_PartitionClusterData)item.NextInChain) {
+                    item.BinaryDump();
+                }
+            }
+
             internal static unsafe _PartitionClusterData CreateFromPool(ulong unitSize, int unitsCount, bool nonPooled)
             {
                 if (0 == unitSize) { throw new ArgumentException(); }
@@ -526,6 +540,7 @@ namespace RawDiskReadPOC.NTFS
                     int poolCount = pool.Count;
                     IntPtr managedBuffer;
                     _PartitionClusterData result = null;
+                    _PartitionClusterData resultChainTail = null;
                     for (int index= 0; index < unitsCount; index++) {
                         if (nonPooled || (0 == poolCount)) {
                             managedBuffer = Marshal.AllocCoTaskMem((int)unitSize);
@@ -537,12 +552,11 @@ namespace RawDiskReadPOC.NTFS
                             poolCount--;
                         }
                         rawBuffer = (byte*)managedBuffer.ToPointer();
-                        _PartitionClusterData allocatedUnit =
-                            new _PartitionClusterData(rawBuffer, unitSize, nonPooled, result);
+                        resultChainTail = new _PartitionClusterData(rawBuffer, unitSize, nonPooled, resultChainTail);
                         if (null == result) {
-                            result = allocatedUnit;
+                            result = resultChainTail;
                         }
-                        _partitionClusterDataUsedPool.Add(allocatedUnit, 0);
+                        _partitionClusterDataUsedPool.Add(resultChainTail, 0);
                     }
                     return result;
                 }

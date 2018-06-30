@@ -35,7 +35,7 @@ namespace RawDiskReadPOC.NTFS
                     int shifting = ((sizeof(ulong) - (runOffsetBytesCount + runLengthBytesCount))) * 8;
                     ulong captured = rawValue << shifting;
                     long relativeOffset = ((long)captured >> (shifting + (8 * runLengthBytesCount)));
-                    pDecoded += runOffsetBytesCount;
+                    pDecoded += runOffsetBytesCount + runLengthBytesCount;
 
                     if (long.MaxValue < previousRunLCN) {
                         throw new NotSupportedException();
@@ -55,6 +55,18 @@ namespace RawDiskReadPOC.NTFS
                         FirstLogicalClusterNumber = thisRunLCN
                     });
                     previousRunLCN = thisRunLCN;
+                }
+                // Invariant check.
+                if (this.HighVcn < this.LowVcn) {
+                    throw new ApplicationException();
+                }
+                ulong totalVCNs = this.HighVcn - this.LowVcn + 1;
+                ulong vcnSumInChunks = 0;
+                foreach (LogicalChunk chunk in chunks) {
+                    vcnSumInChunks += chunk.ClustersCount;
+                }
+                if (vcnSumInChunks != totalVCNs) {
+                    throw new ApplicationException();
                 }
                 return chunks;
             }
@@ -132,11 +144,14 @@ namespace RawDiskReadPOC.NTFS
                 _chunkEnumerator = _chunks.GetEnumerator();
                 // Optimization.
                 _clusterSize = _partition.ClusterSize;
-                MAX_READ_BLOCKS = (int)(_partition.SectorsPerCluster * 8);
-                BUFFER_SIZE = (int)(MAX_READ_BLOCKS * _partition.BytesPerSector);
+                MAX_READ_SECTORS = (int)(_partition.SectorsPerCluster * 8);
+                BUFFER_SIZE = (int)(MAX_READ_SECTORS * _partition.BytesPerSector);
+                // Compute length.
+                _length = 0;
+                foreach(LogicalChunk scannedChunk in chunks) {
+                    _length += (long)(scannedChunk.ClustersCount * _clusterSize);
+                }
             }
-
-            public override long Length => throw new NotImplementedException();
 
             public override bool CanRead
             {
@@ -145,7 +160,7 @@ namespace RawDiskReadPOC.NTFS
 
             public override bool CanSeek
             {
-                get { return false; }
+                get { return true; }
             }
 
             public override bool CanWrite
@@ -153,12 +168,11 @@ namespace RawDiskReadPOC.NTFS
                 get { return false; }
             }
 
+            public override long Length => _length;
+
             public override long Position
             {
-                get
-                {
-                    return _position;
-                }
+                get { return _position; }
                 set => throw new NotSupportedException();
             }
 
@@ -183,11 +197,6 @@ namespace RawDiskReadPOC.NTFS
                 int result = 0;
                 uint sectorsPerCluster = _partition.SectorsPerCluster;
                 fixed (byte* pBuffer = buffer) {
-                    //// Initialization
-                    //if (null == _localBuffer) {
-                    //    // Allocation on first invocation of this method. Will be freed on disposal.
-                    //    _localBuffer = (byte*)Marshal.AllocCoTaskMem(BUFFER_SIZE);
-                    //}
                     // How many bytes are still expected according to Read request ?
                     ulong remainingExpectedBytes = (ulong)count;
                     while (0 < remainingExpectedBytes) {
@@ -212,13 +221,12 @@ namespace RawDiskReadPOC.NTFS
                                 _currentChunkClusterIndex = 0;
                                 _currentChunkRemainingBytesCount = _clusterSize * _currentChunk.ClustersCount;
                                 readFromCluster = _currentChunk.FirstLogicalClusterNumber;
-                                _partition.SeekTo(readFromCluster * sectorsPerCluster);
                             }
                             ulong remainingClustersInChunk = _currentChunk.ClustersCount - _currentChunkClusterIndex;
                             remainingSectorsInChunk = remainingClustersInChunk * sectorsPerCluster;
 
                             // How many blocks should we read ?
-                            readSectorsCount = (uint)MAX_READ_BLOCKS;
+                            readSectorsCount = (uint)MAX_READ_SECTORS;
                             if (readSectorsCount > remainingSectorsInChunk) {
                                 readSectorsCount = (uint)remainingSectorsInChunk;
                             }
@@ -261,7 +269,34 @@ namespace RawDiskReadPOC.NTFS
 
             public override long Seek(long offset, SeekOrigin origin)
             {
-                throw new NotImplementedException();
+                switch (origin) {
+                    case SeekOrigin.Begin:
+                        if (0 > offset) {
+                            throw new ArgumentException("invalid offset.");
+                        }
+                        break;
+                    case SeekOrigin.Current:
+                    case SeekOrigin.End:
+                        throw new NotSupportedException();
+                    default:
+                        throw new ArgumentException();
+                }
+                // Find target chunk.
+                ulong distanceToTarget = (ulong)offset;
+                foreach (LogicalChunk scannedChunk in _chunks) {
+                    ulong chunkSize = scannedChunk.ClustersCount * _clusterSize;
+                    if (chunkSize < distanceToTarget) {
+                        distanceToTarget -= chunkSize;
+                        continue;
+                    }
+                    _currentChunk = scannedChunk;
+                    _currentChunkClusterIndex = (distanceToTarget / _clusterSize);
+                    _clusterDataPosition = (int)(distanceToTarget % _clusterSize);
+                    _position = offset;
+                    return offset;
+                }
+                _position = long.MaxValue;
+                return long.MaxValue;
             }
 
             public override void SetLength(long value)
@@ -275,7 +310,7 @@ namespace RawDiskReadPOC.NTFS
             }
 
             private readonly int BUFFER_SIZE;
-            private readonly int MAX_READ_BLOCKS;
+            private readonly int MAX_READ_SECTORS;
             /// <summary>An enumerator for logical chunks this stream is build upon.</summary>
             private IEnumerator<LogicalChunk> _chunkEnumerator;
             /// <summary></summary>
@@ -294,6 +329,7 @@ namespace RawDiskReadPOC.NTFS
             /// hence no additional offset is required.</summary>
             private ulong _currentChunkClusterIndex;
             private ulong _currentChunkRemainingBytesCount;
+            private long _length;
             ///// <summary>A local buffer used for data capture from the underlying partition. The
             ///// local buffer is created on first read and remains alive until stream disposal.</summary>
             //private unsafe byte* _localBuffer;

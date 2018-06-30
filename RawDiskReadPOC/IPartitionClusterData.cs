@@ -7,5 +7,8 @@ namespace RawDiskReadPOC
         uint DataSize { get; }
         unsafe byte* Data { get; }
         IPartitionClusterData NextInChain { get; }
+
+        void BinaryDump();
+        void BinaryDumpChain();
     }
 }

@@ -51,6 +51,7 @@
   <ItemGroup>
     <Compile Include="AssertionException.cs" />
     <Compile Include="DiskGeometry.cs" />
+    <Compile Include="GenericPartition.cs" />
     <Compile Include="Helpers.cs" />
     <Compile Include="IPartitionClusterData.cs" />
     <Compile Include="Natives.cs" />

@@ -9,9 +9,11 @@ namespace RawDiskReadPOC
 {
     public static class Program
     {
+        internal static int TrackedPartitionIndex => 2;
+
         private static unsafe void CountFiles()
         {
-            foreach (PartitionManager.GenericPartition partition in _partitionManager.EnumeratePartitions()) {
+            foreach (GenericPartition partition in _partitionManager.EnumeratePartitions()) {
                 NtfsPartition ntfsPartition = partition as NtfsPartition;
                 if (null == ntfsPartition) { throw new NotSupportedException(); }
                 if (!partition.Active) { continue; }
@@ -29,7 +31,7 @@ namespace RawDiskReadPOC
             byte* sector = null;
             byte* mftRecord = null;
             try {
-                foreach (PartitionManager.GenericPartition partition in _partitionManager.EnumeratePartitions()) {
+                foreach (GenericPartition partition in _partitionManager.EnumeratePartitions()) {
                     if (!partition.ShouldCapture) { continue; }
                     NtfsPartition ntfsPartition = partition as NtfsPartition;
                     NtfsPartition.Current = ntfsPartition;
@@ -47,6 +49,7 @@ namespace RawDiskReadPOC
 
         public static unsafe int Main(string[] args)
         {
+            // TODO : Configure TrackedPartitionIndex from command line arguments.
             AppDomain.CurrentDomain.FirstChanceException += delegate (object sender, FirstChanceExceptionEventArgs e) {
                 Exception ex = e.Exception;
                 return;
@@ -77,7 +80,8 @@ namespace RawDiskReadPOC
                 InterpretActivePartitions();
                 // Invariant check.
                 NtfsMFTFileRecord.AssertMFTRecordCachingInvariance(_partitionManager);
-                foreach (PartitionManager.GenericPartition partition in _partitionManager.EnumeratePartitions()) {
+                int partitionIndex = 0;
+                foreach (GenericPartition partition in _partitionManager.EnumeratePartitions()) {
                     if (!partition.ShouldCapture) { continue; }
                     NtfsPartition ntfsPartition = partition as NtfsPartition;
                     NtfsPartition.Current = ntfsPartition;
