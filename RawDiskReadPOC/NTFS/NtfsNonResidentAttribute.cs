@@ -333,12 +333,6 @@ namespace RawDiskReadPOC.NTFS
             private ulong _currentChunkClusterIndex;
             private ulong _currentChunkRemainingBytesCount;
             private long _length;
-            ///// <summary>A local buffer used for data capture from the underlying partition. The
-            ///// local buffer is created on first read and remains alive until stream disposal.</summary>
-            //private unsafe byte* _localBuffer;
-            ///// <summary>The local buffer may contain less bytes from the underlying partition than
-            ///// its actual size. This member tracks how many bytes are really in the buffer.</summary>
-            //private uint _localBufferBytesCount;
             /// <summary>The partition this stream belongs to?</summary>
             private NtfsPartition _partition;
             /// <summary>Current position in this stream.</summary>

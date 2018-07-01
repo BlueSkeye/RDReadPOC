@@ -90,6 +90,7 @@ namespace RawDiskReadPOC.NTFS
             return result;
         }
 
+        internal const ulong RECORD_SIZE = 1024;
         /// <summary>An NTFS_RECORD_HEADER structure with a Type of ‘FILE’.</summary>
         internal NtfsRecord Ntfs;
         /// <summary>The number of times that the MFT entry has been reused.</summary>

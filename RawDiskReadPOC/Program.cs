@@ -89,7 +89,6 @@ namespace RawDiskReadPOC
                 if (FeaturesContext.InvariantChecksEnabled) {
                     NtfsMFTFileRecord.AssertMFTRecordCachingInvariance(_partitionManager);
                 }
-                int partitionIndex = 0;
                 foreach (GenericPartition partition in _partitionManager.EnumeratePartitions()) {
                     if (!partition.ShouldCapture) { continue; }
                     NtfsPartition ntfsPartition = partition as NtfsPartition;
@@ -99,9 +98,6 @@ namespace RawDiskReadPOC
                     ntfsPartition.MonitorBadClusters();
                     ntfsPartition.ReadBitmap();
                 }
-                // ntfsPartition.DumpFirstFileNames();
-                //CountFiles();
-                //FindFile(@"C:\Hyberfil.sys");
                 return 0;
             }
             finally {

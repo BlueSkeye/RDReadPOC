@@ -87,15 +87,13 @@ namespace RawDiskReadPOC.NTFS
                     throw new ApplicationException();
                 }
             }
-            ulong recordsPerCluster = clusterSize / RECORD_SIZE;
+            ulong recordsPerCluster = clusterSize / NtfsFileRecord.RECORD_SIZE;
             byte[] localBuffer = new byte[clusterSize];
             Stream mftDataStream = dataAttribute->OpenDataStream();
             try {
                 NtfsBitmapAttribute* bitmap = (NtfsBitmapAttribute*)RecordBase->GetAttribute(NtfsAttributeType.AttributeBitmap);
                 if (null == bitmap) { throw new AssertionException("Didn't find the $MFT bitmap attribute."); }
-                bitmap->Dump();
                 IEnumerator<bool> bitmapEnumerator = bitmap->GetContentEnumerator();
-                bool endOfStream = false;
                 ulong recordIndex = 0;
                 while (bitmapEnumerator.MoveNext()) {
                     recordIndex++;
@@ -111,7 +109,6 @@ namespace RawDiskReadPOC.NTFS
                     mftDataStream.Seek((long)(targetPosition), SeekOrigin.Begin);
                     int readCount = mftDataStream.Read(localBuffer, 0, (int)clusterSize);
                     if (0 == readCount) {
-                        endOfStream = true;
                         break;
                     }
                     if ((int)clusterSize != readCount) {
@@ -119,7 +116,7 @@ namespace RawDiskReadPOC.NTFS
                     }
                     fixed(byte* nativeBuffer = localBuffer) {
                         Helpers.BinaryDump(nativeBuffer, (uint)clusterSize);
-                        byte* nativeRecord = nativeBuffer + (RECORD_SIZE * sectorIndexInCluster);
+                        byte* nativeRecord = nativeBuffer + (NtfsFileRecord.RECORD_SIZE * sectorIndexInCluster);
                         // TODO Make sure the result is inside the buffer.
                         if (!callback((NtfsFileRecord*)nativeRecord)) { break; }
                     }
@@ -146,7 +143,6 @@ namespace RawDiskReadPOC.NTFS
             throw new NotImplementedException();
         }
 
-        private const ulong RECORD_SIZE = 1024;
         private static Dictionary<GenericPartition, NtfsMFTFileRecord> _gcPreventer =
             new Dictionary<GenericPartition, NtfsMFTFileRecord>();
         internal unsafe byte* _localBuffer;
