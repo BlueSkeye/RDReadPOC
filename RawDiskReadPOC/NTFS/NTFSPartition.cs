@@ -14,6 +14,8 @@ namespace RawDiskReadPOC.NTFS
     /// </remarks>
     internal class NtfsPartition : GenericPartition
     {
+        private delegate bool BitmapWalkerDelegate(ulong recordIndex);
+
         internal NtfsPartition(IntPtr handle, bool hidden, uint startSector, uint sectorCount)
             : base(handle, startSector, sectorCount)
         {
@@ -72,6 +74,16 @@ namespace RawDiskReadPOC.NTFS
 
         internal ulong VolumeSerialNumber { get; private set; }
         
+        private static void AssertFindDirectoryItems(string[] pathItems)
+        {
+            foreach(string item in pathItems) {
+                if (string.IsNullOrEmpty(item)) {
+                    throw new ArgumentException("Ill formed path.");
+                }
+            }
+            return;
+        }
+        
         /// <summary>Retrieve and store pointers at system metadata files.</summary>
         internal unsafe void CaptureMetadataFilePointers()
         {
@@ -110,47 +122,17 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        /// <summary>Count files in current partition. We walk the bitmap and find which records are used.
+        /// Each used record is counted as a file.</summary>
+        /// <returns></returns>
         internal unsafe ulong CountFiles()
         {
-            NtfsNonResidentAttribute* dataAttribute =
-                (NtfsNonResidentAttribute*)_mft.RecordBase->GetAttribute(NtfsAttributeType.AttributeData);
-            dataAttribute->AssertNonResident();
-            if (null == dataAttribute) {
-                throw new ApplicationException();
-            }
-            NtfsPartition partition = NtfsPartition.Current;
-            ulong clusterSize = partition.ClusterSize;
-            ulong mftRecordPerCluster = clusterSize / partition.MFTEntrySize;
-            ulong sectorsPerMFTRecord = partition.MFTEntrySize / partition.BytesPerSector;
-            if (FeaturesContext.InvariantChecksEnabled) {
-                if (0 != (clusterSize % partition.MFTEntrySize)) {
-                    throw new ApplicationException();
-                }
-                if (0 != (partition.MFTEntrySize % partition.BytesPerSector)) {
-                    throw new ApplicationException();
-                }
-            }
-            ulong recordsPerCluster = clusterSize / NtfsFileRecord.RECORD_SIZE;
-            byte[] localBuffer = new byte[clusterSize];
-            Stream mftDataStream = dataAttribute->OpenDataStream();
-            try {
-                NtfsBitmapAttribute* bitmap = (NtfsBitmapAttribute*)_mft.RecordBase->GetAttribute(NtfsAttributeType.AttributeBitmap);
-                if (null == bitmap) { throw new AssertionException("Didn't find the $MFT bitmap attribute."); }
-                IEnumerator<bool> bitmapEnumerator = bitmap->GetContentEnumerator();
-                ulong result = 0;
-                while (bitmapEnumerator.MoveNext()) {
-                    if (!bitmapEnumerator.Current) {
-                        continue;
-                    }
-                    result++;
-                }
-                if (null != mftDataStream) { mftDataStream.Close(); }
-                return result;
-            }
-            catch {
-                if (null != mftDataStream) { mftDataStream.Close(); }
-                throw;
-            }
+            ulong result = 0;
+            WalkUsedRecord(delegate (ulong recordIndex) {
+                result++;
+                return true;
+            });
+            return result;
         }
 
         internal unsafe void DumpFirstFileNames()
@@ -238,6 +220,41 @@ namespace RawDiskReadPOC.NTFS
                 }
             }
             return;
+        }
+
+        /// <summary> Find the <see cref="NtfsRecord"/> matching the given path items.</summary>
+        /// <param name="pathItems">One item per directory</param>
+        /// <returns></returns>
+        private unsafe NtfsRecord _FindDirectory(string[] pathItems)
+        {
+            AssertFindDirectoryItems(pathItems);
+            throw new NotImplementedException();
+            NtfsAttribute* directoryAttribute = _mft.RecordBase->GetAttribute(NtfsAttributeType.AttributeIndexRoot);
+            if (null == directoryAttribute) {
+                throw new ApplicationException();
+            }
+            throw new NotImplementedException();
+        }
+
+        /// <summary>Find a file using it's partition relative path.</summary>
+        /// <param name="partitionPath">A path without the drive letter. The leading antislash is optional.
+        /// </param>
+        /// <returns>An <see cref="NtfsRecord"/> for the file or a null reference if not found.</returns>
+        internal NtfsRecord FindFile(string partitionPath)
+        {
+            if (string.IsNullOrEmpty(partitionPath)) {
+                throw new ArgumentNullException();
+            }
+            if (PathSeparator == partitionPath[0]) {
+                if (1 == partitionPath.Length) {
+                    throw new ArgumentException();
+                }
+                partitionPath = partitionPath.Substring(1);
+            }
+            // The Path class is relative to the current directory which may or may not be relevant to the
+            // currently scanned partition. Hence, we have to implement our own path management code.
+            string[] pathItems = partitionPath.Split(PathSeparator);
+            return _FindDirectory(pathItems);
         }
 
         protected override IPartitionClusterData GetClusterBufferChain(uint minimumSize = 0)
@@ -403,6 +420,54 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        private unsafe void WalkUsedRecord(BitmapWalkerDelegate callback)
+        {
+            NtfsNonResidentAttribute* dataAttribute =
+                (NtfsNonResidentAttribute*)_mft.RecordBase->GetAttribute(NtfsAttributeType.AttributeData);
+            dataAttribute->AssertNonResident();
+            if (null == dataAttribute) {
+                throw new ApplicationException();
+            }
+            ulong clusterSize = this.ClusterSize;
+            ulong mftRecordPerCluster = clusterSize / this.MFTEntrySize;
+            ulong sectorsPerMFTRecord = this.MFTEntrySize / this.BytesPerSector;
+            if (FeaturesContext.InvariantChecksEnabled) {
+                if (0 != (clusterSize % this.MFTEntrySize)) {
+                    throw new ApplicationException();
+                }
+                if (0 != (this.MFTEntrySize % this.BytesPerSector)) {
+                    throw new ApplicationException();
+                }
+            }
+            ulong recordsPerCluster = clusterSize / NtfsFileRecord.RECORD_SIZE;
+            byte[] localBuffer = new byte[clusterSize];
+            Stream mftDataStream = dataAttribute->OpenDataStream();
+            try {
+                NtfsBitmapAttribute* bitmap = (NtfsBitmapAttribute*)_mft.RecordBase->GetAttribute(NtfsAttributeType.AttributeBitmap);
+                if (null == bitmap) { throw new AssertionException("Didn't find the $MFT bitmap attribute."); }
+                IEnumerator<bool> bitmapEnumerator = bitmap->GetContentEnumerator();
+                ulong recordIndex = 0;
+                while (bitmapEnumerator.MoveNext()) {
+                    recordIndex++;
+                    if (!bitmapEnumerator.Current) {
+                        continue;
+                    }
+                    if (!callback(recordIndex)) {
+                        return;
+                    }
+                }
+                return;
+            }
+            catch {
+                throw;
+            }
+            finally {
+                if (null != mftDataStream) { mftDataStream.Close(); }
+            }
+        }
+
+        /// <summary>This program is for use on Windows only</summary>
+        private const char PathSeparator = '\\';
         private uint _bytesPerSector;
         private ulong[] _metadataFileLBAs = new ulong[16];
         private NtfsMFTFileRecord _mft;

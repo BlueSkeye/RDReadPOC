@@ -84,9 +84,13 @@ namespace RawDiskReadPOC
                     NtfsPartition ntfsPartition = partition as NtfsPartition;
                     NtfsPartition.Current = ntfsPartition;
 
-                    ntfsPartition.CountFiles();
-                    ntfsPartition.MonitorBadClusters();
-                    ntfsPartition.ReadBitmap();
+                    // Basic functionnality tests. Don't remove.
+                    //ntfsPartition.CountFiles();
+                    //ntfsPartition.MonitorBadClusters();
+                    //ntfsPartition.ReadBitmap();
+
+                    // Locate file.
+                    NtfsRecord pageFileSysRecord = ntfsPartition.FindFile("pagefile.sys");
                 }
                 return 0;
             }
