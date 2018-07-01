@@ -28,9 +28,7 @@ namespace RawDiskReadPOC
             fixed(void* pBuffer = buffer) {
                 uint returnedBytes;
                 if (!Natives.DeviceIoControl(handle, IOCTL_DISK_GET_DRIVE_GEOMETRY_EX, IntPtr.Zero, 0,
-                    pBuffer, (uint)buffer.Length,
-                    // &geometry, (uint)Marshal.SizeOf(geometry),
-                    out returnedBytes, IntPtr.Zero))
+                    pBuffer, (uint)buffer.Length, out returnedBytes, IntPtr.Zero))
                 {
                     int nativeError = Marshal.GetLastWin32Error();
                     throw new ApplicationException(string.Format("DeviceIoControl error 0x{0:X8}", nativeError));
@@ -56,8 +54,6 @@ namespace RawDiskReadPOC
         {
             internal DISK_GEOMETRY Geometry;
             internal ulong DiskSize;
-            // GPT or MBR disk partition info
-            // DISK_PARTITION_INFO
         }
 
         [Serializable()]

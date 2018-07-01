@@ -11,16 +11,6 @@ namespace RawDiskReadPOC
     {
         internal static int TrackedPartitionIndex => 2;
 
-        private static unsafe void CountFiles()
-        {
-            foreach (GenericPartition partition in _partitionManager.EnumeratePartitions()) {
-                NtfsPartition ntfsPartition = partition as NtfsPartition;
-                if (null == ntfsPartition) { throw new NotSupportedException(); }
-                if (!partition.Active) { continue; }
-                ulong filesCount = ntfsPartition.CountFiles();
-            }
-        }
-
         private static void DisplayVersion()
         {
             Assembly entryAssembly = Assembly.GetEntryAssembly();
