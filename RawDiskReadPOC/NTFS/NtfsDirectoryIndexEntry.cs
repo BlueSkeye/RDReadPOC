@@ -13,7 +13,7 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe void Dump()
         {
             GenericEntry.Dump();
-            Console.WriteLine("\t\tFRN 0x{0:X16}",
+            Console.WriteLine("\t\t\tFRN 0x{0:X16}",
                 FileReferenceNumber);
             if (0 < GenericEntry.EntryLength) {
                 fixed(NtfsDirectoryIndexEntry* pDirectoryEntry = &this) {

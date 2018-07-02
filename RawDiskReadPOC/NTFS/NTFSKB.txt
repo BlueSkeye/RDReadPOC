@@ -256,7 +256,7 @@ Moreover, ﬁxup values must beapplied before decoding the contents of the recor
 some nodes of the B-tree. Each node startswith a standard header, which is shown in Table
 
 The header contains information about the starting and ending offsets of the indexentry list, i.e. a list
-of the contents in the node. The root node con-tained inside a $INDEX_ROOT attribute has exactly the same
+of the contents in the node. The root node contained inside a $INDEX_ROOT attribute has exactly the same
 structure.
 
 . $MFT record dump

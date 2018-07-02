@@ -17,11 +17,10 @@ namespace RawDiskReadPOC.NTFS
         /// <summary>Offset to end of used portion of index entry list relatively to the node
         /// header itself.</summary>
         internal uint OffsetToEndOfIndexEntries;
-        /// <summary>Offset to end of allocated index entry list buffer, relatvely to the node header
+        /// <summary>Offset to end of allocated index entry list buffer, relatively to the node header
         /// itself.</summary>
         internal uint OffsetToEndOfAllocation;
-        /// <summary>A bit array of flags specifying properties of the index. The values defined
-        /// include:</summary>
+        /// <summary>A bit array of flags specifying properties of the index.</summary>
         internal DirectoryFlags Flags;
         internal byte _unused1;
         internal byte _unused2;
