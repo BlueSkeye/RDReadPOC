@@ -103,7 +103,7 @@ namespace RawDiskReadPOC.NTFS
                             break;
                         }
                         if (NtfsAttributeType.AttributeFileName == currentAttribute->AttributeType) {
-                            NtfsFileNameAttribute* nameAttribute = (NtfsFileNameAttribute*)currentAttribute;
+                            NtfsFileNameAttribute* nameAttribute = (NtfsFileNameAttribute*)(currentAttribute->GetValue());
                             string metadataFileName = Encoding.Unicode.GetString((byte*)&nameAttribute->Name, nameAttribute->NameLength * sizeof(char));
                             if ("$MFT" == metadataFileName) {
                                 // It is not expected for a partition to have more than one $Mft record.
@@ -115,7 +115,7 @@ namespace RawDiskReadPOC.NTFS
                         currentAttribute = (NtfsAttribute*)((byte*)currentAttribute +
                             ((NtfsAttributeType.AttributeNone == currentAttribute->AttributeType)
                                 ? sizeof(ulong)
-                                : currentAttribute->GetTotalSize()));
+                                : currentAttribute->GetResidentSize()));
                     }
                     currentRecordLBA += header->BytesAllocated / BytesPerSector;
                 }
@@ -177,7 +177,7 @@ namespace RawDiskReadPOC.NTFS
                         if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
                         if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
                         if (NtfsAttributeType.AttributeFileName == currentAttribute->AttributeType) {
-                            NtfsFileNameAttribute* nameAttribute = (NtfsFileNameAttribute*)currentAttribute;
+                            NtfsFileNameAttribute* nameAttribute = (NtfsFileNameAttribute*)(currentAttribute->GetValue());
                             string metadataFileName = Encoding.Unicode.GetString((byte*)&nameAttribute->Name, nameAttribute->NameLength * sizeof(char));
                             Console.WriteLine(metadataFileName);
                         }
@@ -228,57 +228,73 @@ namespace RawDiskReadPOC.NTFS
         private unsafe NtfsRecord _FindDirectory(string[] pathItems)
         {
             AssertFindDirectoryItems(pathItems);
-            //NtfsAttribute* directoryAttribute =
-            //    _mft.RecordBase->GetAttribute(NtfsAttributeType.AttributeIndexRoot);
-            ulong currentRecordLBA =
-                _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.Root];
+            ulong currentRecordLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.Root];
             NtfsFileRecord* rootRecord = null;
             uint readOpCount = 0;
             IPartitionClusterData clusterData = null;
-            try {
-                clusterData = ReadSectors(currentRecordLBA, SectorsPerCluster);
-                if (null == clusterData) {
-                    throw new ApplicationException();
-                }
-                byte* buffer = clusterData.Data;
-                uint bufferSize = clusterData.DataSize;
-                readOpCount++;
-                rootRecord = (NtfsFileRecord*)buffer;
-                rootRecord->AssertRecordType();
-                NtfsRootIndexAttribute* rootIndexAttribute = (NtfsRootIndexAttribute*)
-                    rootRecord->GetAttribute(NtfsAttributeType.AttributeIndexRoot);
-                if (null == rootIndexAttribute) {
-                    throw new ApplicationException();
-                }
-                NtfsIndexAllocationAttribute* indexAllocationAttribute = (NtfsIndexAllocationAttribute*)
-                    rootRecord->GetAttribute(NtfsAttributeType.AttributeIndexAllocation);
-                // The Index allocation attribute may be missing.
-                rootIndexAttribute->Dump();
-                if (null != indexAllocationAttribute) { indexAllocationAttribute->Dump(); }
-
-                NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)rootRecord + rootRecord->AttributesOffset);
-                // Walk attributes.
-                for (int attributeIndex = 0; attributeIndex < rootRecord->NextAttributeNumber; attributeIndex++) {
-                    // if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
-                    if (rootRecord->BytesInUse < ((byte*)currentAttribute - (byte*)rootRecord)) { break; }
-                    if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
-                    NtfsNonResidentAttribute* nonResident = (0 == currentAttribute->Nonresident)
-                        ? null
-                        : (NtfsNonResidentAttribute*)currentAttribute;
-                    if (null != nonResident) {
-                        nonResident->DecodeRunArray();
+            while (true) {
+                try {
+                    // Read the currently scanned record.
+                    clusterData = ReadSectors(currentRecordLBA, SectorsPerCluster);
+                    if (null == clusterData) {
+                        throw new ApplicationException();
                     }
-                    currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
+                    byte* buffer = clusterData.Data;
+                    uint bufferSize = clusterData.DataSize;
+                    readOpCount++;
+                    rootRecord = (NtfsFileRecord*)buffer;
+                    rootRecord->AssertRecordType();
+                    NtfsResidentAttribute* rootIndexAttributeHeader =
+                        (NtfsResidentAttribute*)(rootRecord->GetAttribute(NtfsAttributeType.AttributeIndexRoot));
+                    if (null == rootIndexAttributeHeader) {
+                        throw new ApplicationException();
+                    }
+                    if (FeaturesContext.InvariantChecksEnabled) {
+                        rootIndexAttributeHeader->AssertResident();
+                    }
+                    NtfsRootIndexAttribute* rootIndexAttribute =
+                        (NtfsRootIndexAttribute*)(rootIndexAttributeHeader->GetValue());
+                    NtfsIndexAllocationAttribute* indexAllocationAttribute = null;
+                    NtfsNonResidentAttribute * indexAllocationAttributeHeader =
+                        (NtfsNonResidentAttribute*)(rootRecord->GetAttribute(NtfsAttributeType.AttributeIndexAllocation));
+                    if (null != indexAllocationAttributeHeader) {
+                        if (FeaturesContext.InvariantChecksEnabled) {
+                            indexAllocationAttributeHeader->AssertNonResident();
+                        }
+                        indexAllocationAttribute = (NtfsIndexAllocationAttribute*)
+                            rootRecord->GetAttribute(NtfsAttributeType.AttributeIndexAllocation);
+                    }
+                    // The Index allocation attribute may be missing.
+                    rootIndexAttributeHeader->Dump();
+                    rootIndexAttribute->Dump();
+                    if (null != indexAllocationAttribute) {
+                        indexAllocationAttributeHeader->Dump();
+                        indexAllocationAttribute->Dump();
+                    }
+
+                    NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)rootRecord + rootRecord->AttributesOffset);
+                    // Walk attributes.
+                    for (int attributeIndex = 0; attributeIndex < rootRecord->NextAttributeNumber; attributeIndex++) {
+                        if (rootRecord->BytesInUse < ((byte*)currentAttribute - (byte*)rootRecord)) { break; }
+                        if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
+                        NtfsNonResidentAttribute* nonResident = (0 == currentAttribute->Nonresident)
+                            ? null
+                            : (NtfsNonResidentAttribute*)currentAttribute;
+                        if (null != nonResident) {
+                            nonResident->DecodeRunArray();
+                        }
+                        currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
+                    }
+                    rootRecord = (NtfsFileRecord*)((byte*)rootRecord + rootRecord->BytesAllocated);
+                    if (bufferSize <= ((byte*)rootRecord - buffer)) {
+                        rootRecord = null;
+                        currentRecordLBA += SectorsPerCluster;
+                    }
                 }
-                rootRecord = (NtfsFileRecord*)((byte*)rootRecord + rootRecord->BytesAllocated);
-                if (bufferSize <= ((byte*)rootRecord - buffer)) {
-                    rootRecord = null;
-                    currentRecordLBA += SectorsPerCluster;
-                }
-            }
-            finally {
-                if (null != clusterData) {
-                    clusterData.Dispose();
+                finally {
+                    if (null != clusterData) {
+                        clusterData.Dispose();
+                    }
                 }
             }
 

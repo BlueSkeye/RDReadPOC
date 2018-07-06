@@ -32,13 +32,18 @@ namespace RawDiskReadPOC.NTFS
                 _Dump();
                 return;
             }
-            fixed (void* rawAttribute = &this) {
+            fixed (NtfsAttribute* rawAttribute = &this) {
+                void* rawValue = null;
+                if (0 != rawAttribute->Nonresident) {
+                    ((NtfsResidentAttribute*)rawAttribute)->Dump();
+                    rawValue = rawAttribute->GetValue();
+                }
                 switch (AttributeType) {
                     case NtfsAttributeType.AttributeBitmap:
                         ((NtfsBitmapAttribute*)rawAttribute)->Dump();
                         return;
                     case NtfsAttributeType.AttributeFileName:
-                        ((NtfsFileNameAttribute*)rawAttribute)->Dump();
+                        ((NtfsFileNameAttribute*)rawValue)->Dump();
                         return;
                     case NtfsAttributeType.AttributeIndexAllocation:
                         ((NtfsIndexAllocationAttribute*)rawAttribute)->Dump();
@@ -50,7 +55,7 @@ namespace RawDiskReadPOC.NTFS
                         ((NtfsLoggedUtilyStreamAttribute*)rawAttribute)->Dump();
                         return;
                     case NtfsAttributeType.AttributeSecurityDescriptor:
-                        ((NtfsSecurityDescriptorAttribute*)rawAttribute)->Dump();
+                        ((NtfsSecurityDescriptorAttribute*)rawValue)->Dump();
                         return;
                     case NtfsAttributeType.AttributeStandardInformation:
                         ((NtfsStandardInformationAttribute*)rawAttribute)->Dump();
@@ -78,15 +83,20 @@ namespace RawDiskReadPOC.NTFS
                 AttributeNumber, Name ?? "UNNAMED");
         }
 
-        internal unsafe uint GetTotalSize()
+        /// <summary>Get the resident part size of this attribute.</summary>
+        /// <returns></returns>
+        internal unsafe uint GetResidentSize()
         {
-            switch (AttributeType) {
-                case NtfsAttributeType.AttributeIndexRoot:
-                    fixed(NtfsAttribute* baseAttribute = &this) {
-                        return ((NtfsRootIndexAttribute*)baseAttribute)->GetTotalSize();
-                    }
-                default:
-                    return Length;
+            return Length;
+        }
+
+        internal unsafe void* GetValue()
+        {
+            if (0 != Nonresident) {
+                throw new NotImplementedException();
+            }
+            fixed(NtfsAttribute* pThis = &this) {
+                return ((byte*)pThis) + ((NtfsResidentAttribute*)pThis)->ValueOffset;
             }
         }
 

@@ -9,15 +9,11 @@ namespace RawDiskReadPOC.NTFS
     {
         internal void Dump()
         {
-            Header.AssertNonResident();
-            Header.Dump();
-            Console.WriteLine("\tBVcn 0x{0:X8}",
+            Console.WriteLine("\t\tBVcn 0x{0:X8}",
                 IndexBlockVcn);
             DirectoryIndex.Dump();
         }
         
-        /// <summary>An NTFS_RECORD_HEADER structure with a Type of ‘INDX’.</summary>
-        internal NtfsNonResidentAttribute Header;
         /// <summary>The VCN of the index block.</summary>
         internal ulong IndexBlockVcn;
         /// <summary>A DIRECTORY_INDEX structure.</summary>

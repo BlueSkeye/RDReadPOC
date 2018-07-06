@@ -9,8 +9,6 @@ namespace RawDiskReadPOC.NTFS
     {
         internal void Dump()
         {
-            Header.AssertResident();
-            Header.Dump();
             Console.WriteLine("\tRefNum 0x{0:X8}",
                 DirectoryFileReferenceNumber);
             Console.WriteLine("\tCR {0} ({1})",
@@ -30,7 +28,6 @@ namespace RawDiskReadPOC.NTFS
         }
 
         // TODO : Provide 2 properties for dir file ref number splitting.
-        internal NtfsResidentAttribute Header;
         /// <summary>The file reference number of the directory in which the filename is entered.
         /// This is a composite number. The first 6 bytes are a parent reference number while the 2 lower
         /// bytes are a sequence number within the parent record.</summary>

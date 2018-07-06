@@ -7,8 +7,6 @@ namespace RawDiskReadPOC.NTFS
     {
         internal void Dump()
         {
-            Header.AssertResident();
-            Header.Dump();
             Console.WriteLine("\tCR {0} ({1})",
                 CreationTime, Helpers.DecodeTime(CreationTime));
             Console.WriteLine("\tCH {0} ({1})",
@@ -37,7 +35,6 @@ namespace RawDiskReadPOC.NTFS
             return (0 == result.Length) ? "NONE" : result.ToString();
         }
 
-        internal NtfsResidentAttribute Header;
         /// <summary>The time when the file was created in the standard time format (that is,
         /// the number of 100-nanosecond intervals since January 1, 1601).</summary>
         internal ulong CreationTime;

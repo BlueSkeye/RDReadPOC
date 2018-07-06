@@ -21,6 +21,16 @@ namespace RawDiskReadPOC.NTFS
                 ValueLength, ValueOffset, Flags);
         }
 
+        /// <summary>WARNING, the caller must also fix the structure before invoking this function and
+        /// keep it fixed all along while using the returned value.</summary>
+        /// <returns></returns>
+        internal unsafe void* GetValue()
+        {
+            fixed(NtfsResidentAttribute* pThis = &this) {
+                return (byte*)pThis + this.ValueOffset;
+            }
+        }
+
         /// <summary>Open a data stream on the data part of this attribute.</summary>
         /// <param name="chunks">Optional parameter.</param>
         /// <returns></returns>

@@ -90,6 +90,14 @@ namespace RawDiskReadPOC.NTFS
             return result;
         }
 
+        internal unsafe void* GetResidentAttributeValue(NtfsAttributeType kind,
+            out NtfsResidentAttribute* attributeHeader, uint order = 1)
+        {
+            attributeHeader = (NtfsResidentAttribute*)GetAttribute(kind, order);
+            attributeHeader->AssertResident();
+            return (null == attributeHeader) ? null : attributeHeader->GetValue();
+        }
+
         internal const ulong RECORD_SIZE = 1024;
         /// <summary>An NTFS_RECORD_HEADER structure with a Type of ‘FILE’.</summary>
         internal NtfsRecord Ntfs;

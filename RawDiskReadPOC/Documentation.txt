@@ -1,4 +1,6 @@
-﻿
+﻿Conditional compilation symbols
+CHK_DATAPOOL : Check data pool allocation and deallocation.
+CHK_INVARIANTS : Check invariants.
 
 Ideas
 - Implement asynchronous I/O. Extended parameters are required.

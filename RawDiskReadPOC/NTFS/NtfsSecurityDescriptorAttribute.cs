@@ -6,12 +6,8 @@ namespace RawDiskReadPOC.NTFS
     {
         internal void Dump()
         {
-            Header.AssertResident();
-            Header.Dump();
             Console.WriteLine("\tTODO dump content");
             return;
         }
-
-        internal NtfsResidentAttribute Header;
     }
 }

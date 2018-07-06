@@ -8,21 +8,16 @@ namespace RawDiskReadPOC.NTFS
     /// Total size before first possible entry is 0x38/56 bytes.</remarks>
     internal struct NtfsRootIndexAttribute
     {
-        internal void AssertResident()
-        {
-            Header.AssertResident();
-        }
-
         internal unsafe void Dump()
         {
-            Header.AssertResident();
-            Header.Dump();
             Console.WriteLine("\tType {0}, Coll {1}, BPIR {2}, CPIR {3}",
-                Helpers.uint32ToUnicodeString(Type), Helpers.uint32ToUnicodeString(CollationRule),
+                Helpers.uint32ToUnicodeString(Type),
+                // Helpers.uint32ToUnicodeString(CollationRule),
+                CollationRule,
                 BytesPerIndexRecord, ClustersPerIndexRecord);
             int entryIndex = 0;
             fixed(NtfsRootIndexAttribute* pAttribute = &this) {
-                NtfsNodeHeader* pNodeHeader = &(pAttribute->NodeHeader);
+                NtfsNodeHeader* pNodeHeader = (NtfsNodeHeader*)((byte*)pAttribute + sizeof(NtfsRootIndexAttribute));
                 pNodeHeader->Dump();
                 NtfsDirectoryIndexEntry* scannedEntry =
                     (NtfsDirectoryIndexEntry*)((byte*)pNodeHeader + pNodeHeader->OffsetToFirstIndexEntry);
@@ -43,14 +38,19 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
-        internal uint GetTotalSize()
-        {
-            uint result = Header.Header.Length;
-            return result;
-        }
+        //internal uint GetTotalSize()
+        //{
+        //    uint result = Header.Header.Length;
+        //    return result;
+        //}
 
-        // This part is 0x18/24 bytes
-        internal NtfsResidentAttribute Header;
+        //// This part is 0x18/24 bytes
+        //internal NtfsResidentAttribute Header;
+        //// TODO : Clarify why this padding is required. EITHER there is an alignment constraint that we
+        //// missed in our readings OR there are additional fields that are new in our testing environment.
+        //// The later is less likely due to FS version.
+        //internal ulong _padding;
+
         // The following part, until NodeHeader (not included) is 0x10/16 bytes.
         /// <summary>The type of the attribute that is indexed</summary>
         internal uint Type;
@@ -67,15 +67,11 @@ namespace RawDiskReadPOC.NTFS
         internal byte _unused1;
         internal byte _unused2;
         internal byte _unused3;
-        // TODO : Clarify why this padding is required. EITHER there is an alignment constraint that we
-        // missed in our readings OR there are additional fields that are new in our testing environment.
-        // The later is less likely due to FS version.
-        internal ulong _padding;
         // This attribute stores a single node grouping one or more index entries. Entries in a node
         // are organized as a list. The last entry in a list is a special empty one.
         // ----------------- DIRECTORY_INDEX part 0x10/16 bytes long -------------------------
-        internal NtfsNodeHeader NodeHeader;
-        // Directory index entries just follows the node header which has a variable size.
-        internal NtfsDirectoryIndexEntry IndexEntry;
+        //internal NtfsNodeHeader NodeHeader;
+        //// Directory index entries just follows the node header which has a variable size.
+        //internal NtfsDirectoryIndexEntry IndexEntry;
     }
 }
