@@ -2,11 +2,16 @@
 
 namespace RawDiskReadPOC.NTFS
 {
+    /// <summary></summary>
+    /// <remarks>Until NTFS version 3.0, only filename attributes were indexed. If the HasTrailingVcn
+    /// flag of a DIRECTORY_ENTRY structure is set, the last eight bytes of the directory entry
+    /// contain the VCN of the index block that holds the entries immediately preceding the current
+    /// entry.</remarks>
     internal struct NtfsIndexEntry
     {
         internal bool HasSubNode
         {
-            get { return 0 != (EntryFlags.HasSubNode & Flags); }
+            get { return 0 != (EntryFlags.HasTrailingVCN & Flags); }
         }
 
         internal bool LastIndexEntry
@@ -43,7 +48,7 @@ namespace RawDiskReadPOC.NTFS
         [Flags()]
         internal enum EntryFlags : uint
         {
-            HasSubNode = 1,
+            HasTrailingVCN = 1,
             LastIndexInNode = 2
         }
     }

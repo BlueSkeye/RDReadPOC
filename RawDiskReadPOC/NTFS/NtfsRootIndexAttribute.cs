@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace RawDiskReadPOC.NTFS
 {
+    internal unsafe delegate bool IndexEntryHandlerDelegate(NtfsDirectoryIndexEntry* entry);
+
     /// <summary>This is the root node of the B+ tree that implements an index (e.g. a directory).
     /// This file attribute is always resident.</summary>
     /// <remarks>An INDEX_ROOT structure is followed by a sequence of DIRECTORY_ENTRY structures.
@@ -16,25 +19,35 @@ namespace RawDiskReadPOC.NTFS
                 CollationRule,
                 BytesPerIndexRecord, ClustersPerIndexRecord);
             int entryIndex = 0;
-            fixed(NtfsRootIndexAttribute* pAttribute = &this) {
+            EnumerateIndexEntries(delegate (NtfsDirectoryIndexEntry* scannedEntry) {
+                Console.WriteLine("\t\tentry #{0}", entryIndex++);
+                scannedEntry->Dump();
+                return true;
+            });
+        }
+
+        internal unsafe void EnumerateIndexEntries(IndexEntryHandlerDelegate callback)
+        {
+            fixed (NtfsRootIndexAttribute* pAttribute = &this) {
                 NtfsNodeHeader* pNodeHeader = (NtfsNodeHeader*)((byte*)pAttribute + sizeof(NtfsRootIndexAttribute));
                 pNodeHeader->Dump();
                 NtfsDirectoryIndexEntry* scannedEntry =
                     (NtfsDirectoryIndexEntry*)((byte*)pNodeHeader + pNodeHeader->OffsetToFirstIndexEntry);
-                while(true) {
+                while (true) {
                     ulong scannedEntryOffset = (ulong)((byte*)scannedEntry - (byte*)pNodeHeader);
                     if (pNodeHeader->OffsetToEndOfIndexEntries <= scannedEntryOffset) {
                         throw new ApplicationException();
                     }
-                    Console.WriteLine("\t\tentry #{0}", entryIndex++);
-                    scannedEntry->Dump();
+                    if (!callback(scannedEntry)) {
+                        return;
+                    }
                     // TODO : Clarify exit condition. Does the last record holds any valuable data ?
                     if (scannedEntry->GenericEntry.LastIndexEntry) {
-                        break;
+                        return;
                     }
                     scannedEntry = (NtfsDirectoryIndexEntry*)((byte*)scannedEntry + scannedEntry->GenericEntry.EntryLength);
                 }
-                return;
+                throw new ApplicationException("Last index entry missing.");
             }
         }
 

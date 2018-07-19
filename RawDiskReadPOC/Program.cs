@@ -89,8 +89,19 @@ namespace RawDiskReadPOC
                     //ntfsPartition.MonitorBadClusters();
                     //ntfsPartition.ReadBitmap();
 
+//entry #0
+//    Len 112, AttrL 88, Flgs 0x00000001
+//    ChildVCN 0x100520070
+//    FRN 0x0001000000128682
+//    Name: msdia80.dll
+                    //using (IPartitionClusterData clusterData = ntfsPartition.GetCluster(0x00520070)) {
+                    //    byte* rawData = clusterData.Data;
+                    //    NtfsRecord* fileRecord = (NtfsRecord*)rawData;
+                    //    fileRecord->Dump();
+                    //    return 0;
+                    //}
                     // Locate file.
-                    NtfsRecord pageFileSysRecord = ntfsPartition.FindFile("pagefile.sys");
+                    NtfsFileRecord* pageFileSysRecord = ntfsPartition.FindFile("pagefile.sys");
                 }
                 return 0;
             }

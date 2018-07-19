@@ -249,15 +249,15 @@ directory tree.3.3 index records
 
 Index records form the contents of non-resident
 
-$INDEX_ALLOCATION attributes. Table 3.4 shows the structure of the ﬁrst 24 bytes of arecord, i.e. its
-header. This kind of record shares some similaritieswith a MFT entry. First of all, the ﬁrst sector of
-an index record is recognizable from the signature INDX
-Moreover, ﬁxup values must beapplied before decoding the contents of the record.An index record contains
-some nodes of the B-tree. Each node startswith a standard header, which is shown in Table
+$INDEX_ALLOCATION attributes. Table 3.4 shows the structure of the ﬁrst 24 bytes of arecord, i.e.
+its header. This kind of record shares some similarities with a MFT entry. First of all, the
+ﬁrst sector of an index record is recognizable from the signature INDX. Moreover, ﬁxup values
+must be applied before decoding the contents of the record. An index record contains some nodes
+of the B-tree. Each node starts with a standard header, which is shown in Table
 
-The header contains information about the starting and ending offsets of the indexentry list, i.e. a list
-of the contents in the node. The root node contained inside a $INDEX_ROOT attribute has exactly the same
-structure.
+The header contains information about the starting and ending offsets of the index entry list,
+i.e. a list of the contents in the node. The root node contained inside a $INDEX_ROOT attribute
+has exactly the same structure.
 
 . $MFT record dump
 ==================

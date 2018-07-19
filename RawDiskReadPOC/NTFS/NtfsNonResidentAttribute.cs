@@ -11,6 +11,12 @@ namespace RawDiskReadPOC.NTFS
             if (0 == Header.Nonresident) { throw new ApplicationException(); }
         }
 
+        internal void AssertVCN(ulong candidate)
+        {
+            if (candidate < LowVcn) { throw new ApplicationException(); }
+            if (candidate < HighVcn) { throw new ApplicationException(); }
+        }
+
         /// <summary>Returns a set of items each of which describes a range of adjacent logical clusters and
         /// the logical number of the first cluster in the range.</summary>
         /// <returns>A set of cluster renges.</returns>
@@ -99,7 +105,7 @@ namespace RawDiskReadPOC.NTFS
         /// nonresident attributes.</summary>
         internal NtfsAttribute Header;
         /// <summary>The lowest valid Virtual Cluster Number (VCN) of this portion of the
-        /// attribute value. Unless the attribute value is very fragmentedc(to the extent
+        /// attribute value. Unless the attribute value is very fragmented (to the extent
         /// that an attribute list is needed to describe it), there is only one portion of
         /// the attribute value, and the value of LowVcn is zero.</summary>
         internal ulong LowVcn;
