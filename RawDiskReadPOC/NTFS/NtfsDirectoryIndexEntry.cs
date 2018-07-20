@@ -22,6 +22,24 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        internal unsafe void BinaryDump()
+        {
+            fixed (NtfsDirectoryIndexEntry* rawData = &this) {
+                Helpers.BinaryDump((byte*)rawData, rawData->GenericEntry.EntryLength);
+            }
+        }
+
+        internal unsafe ulong ChildNodeVCN
+        {
+            get
+            {
+                // The child entry VCN is an ulong at the very end of the entry.
+                fixed(NtfsDirectoryIndexEntry* pEntry = &this) {
+                    return *(ulong*)((byte*)pEntry + pEntry->GenericEntry.EntryLength - sizeof(ulong));
+                }
+            }
+        }
+
         internal unsafe void Dump()
         {
             GenericEntry.Dump();

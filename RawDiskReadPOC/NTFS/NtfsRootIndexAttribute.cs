@@ -1,10 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
 
 namespace RawDiskReadPOC.NTFS
 {
-    internal unsafe delegate bool IndexEntryHandlerDelegate(NtfsDirectoryIndexEntry* entry);
-
     /// <summary>This is the root node of the B+ tree that implements an index (e.g. a directory).
     /// This file attribute is always resident.</summary>
     /// <remarks>An INDEX_ROOT structure is followed by a sequence of DIRECTORY_ENTRY structures.
@@ -21,12 +18,13 @@ namespace RawDiskReadPOC.NTFS
             int entryIndex = 0;
             EnumerateIndexEntries(delegate (NtfsDirectoryIndexEntry* scannedEntry) {
                 Console.WriteLine("\t\tentry #{0}", entryIndex++);
+                scannedEntry->BinaryDump();
                 scannedEntry->Dump();
                 return true;
             });
         }
 
-        internal unsafe void EnumerateIndexEntries(IndexEntryHandlerDelegate callback)
+        internal unsafe void EnumerateIndexEntries(NtfsIndexEntryHandlerDelegate callback)
         {
             fixed (NtfsRootIndexAttribute* pAttribute = &this) {
                 NtfsNodeHeader* pNodeHeader = (NtfsNodeHeader*)((byte*)pAttribute + sizeof(NtfsRootIndexAttribute));

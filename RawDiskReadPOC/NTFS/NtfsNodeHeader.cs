@@ -12,13 +12,17 @@ namespace RawDiskReadPOC.NTFS
                 OffsetToFirstIndexEntry, OffsetToEndOfIndexEntries, OffsetToEndOfAllocation, Flags);
         }
 
-        /// <summary>Offset to start of index entry list, relatively to the node header itself.</summary>
+        /// <summary>Offset to start of index entry list. In the context of the ROOT index attribute
+        /// this is relative to the NtfsNodeHeader itself. In an INDEX_BLOCK this is relative to the
+        /// NtfsRecord preceeding the NtfsNodeHeader.</summary>
         internal uint OffsetToFirstIndexEntry;
-        /// <summary>Offset to end of used portion of index entry list relatively to the node
-        /// header itself.</summary>
+        /// <summary>Offset to end of used portion of index entry list. In the context of the
+        /// ROOT index attribute this is relative to the NtfsNodeHeader itself. In an INDEX_BLOCK
+        /// this is relative to the NtfsRecord preceeding the NtfsNodeHeader.</summary>
         internal uint OffsetToEndOfIndexEntries;
-        /// <summary>Offset to end of allocated index entry list buffer, relatively to the node header
-        /// itself.</summary>
+        /// <summary>Offset to end of allocated index entry list buffer. In the context of the
+        /// ROOT index attribute this is relative to the NtfsNodeHeader itself. In an INDEX_BLOCK
+        /// this is relative to the NtfsRecord preceeding the NtfsNodeHeader.</summary>
         internal uint OffsetToEndOfAllocation;
         /// <summary>A bit array of flags specifying properties of the index.</summary>
         internal DirectoryFlags Flags;

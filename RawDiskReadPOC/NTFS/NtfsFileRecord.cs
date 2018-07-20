@@ -8,7 +8,7 @@ namespace RawDiskReadPOC.NTFS
     {
         internal unsafe void ApplyFixups()
         {
-            Ntfs.ApplyFixups(BytesInUse);
+            Ntfs.ApplyFixups();
         }
 
         internal void AssertRecordType()

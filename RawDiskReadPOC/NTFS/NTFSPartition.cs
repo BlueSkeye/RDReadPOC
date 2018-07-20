@@ -247,6 +247,33 @@ namespace RawDiskReadPOC.NTFS
                 }
                 NtfsRootIndexAttribute* rootIndexAttribute =
                     (NtfsRootIndexAttribute*)(rootIndexAttributeHeader->GetValue());
+                rootIndexAttributeHeader->Dump();
+                rootIndexAttribute->Dump();
+                ulong indexAllocationVCN = ulong.MaxValue;
+                rootIndexAttribute->EnumerateIndexEntries(delegate (NtfsDirectoryIndexEntry* scannedEntry) {
+                    string name = scannedEntry->Name;
+                    if ((null == name) && !scannedEntry->GenericEntry.LastIndexEntry) {
+                        throw new ApplicationException("Unamed index entry found.");
+                    }
+                    // TODO : Account for sort order. 
+                    switch (string.Compare(childName, name)) {
+                        case -1:
+                            indexAllocationVCN = scannedEntry->ChildNodeVCN;
+                            return false;
+                        case 0:
+                            // Don't know yet how to retrieve an item that is located in teh index_root
+                            // attribute.
+                            throw new NotImplementedException();
+                        case 1:
+                            return true;
+                        default:
+                            throw new ApplicationException();
+                    }
+                });
+                if (ulong.MaxValue == indexAllocationVCN) {
+                    return null;
+                }
+                // Continue with an index allocation entry.
                 NtfsIndexAllocationAttribute* indexAllocationAttribute = null;
                 NtfsNonResidentAttribute * indexAllocationAttributeHeader =
                     (NtfsNonResidentAttribute*)(fromRecord->GetAttribute(NtfsAttributeType.AttributeIndexAllocation));
@@ -255,36 +282,37 @@ namespace RawDiskReadPOC.NTFS
                     if (FeaturesContext.InvariantChecksEnabled) {
                         indexAllocationAttributeHeader->AssertNonResident();
                     }
-                    indexAllocationAttribute = (NtfsIndexAllocationAttribute*)
-                        fromRecord->GetAttribute(NtfsAttributeType.AttributeIndexAllocation);
-                }
-                rootIndexAttributeHeader->Dump();
-                rootIndexAttribute->Dump();
-                if (null != indexAllocationAttribute) {
                     indexAllocationAttributeHeader->Dump();
-                    indexAllocationAttribute->Dump();
-                }
-                NtfsDirectoryIndexEntry* parentEntry = null;
-                rootIndexAttribute->EnumerateIndexEntries(delegate (NtfsDirectoryIndexEntry* scannedEntry) {
-                    string name = scannedEntry->Name;
-                    if ((null == name) && !scannedEntry->GenericEntry.LastIndexEntry) {
-                        throw new ApplicationException("Unamed index entry found.");
+                    using (IClusterStream dataStream = indexAllocationAttributeHeader->OpenDataClusterStream()) {
+                        while (true) {
+                            IPartitionClusterData rawData = dataStream.ReadNextCluster();
+
+                            if (null == rawData) {
+                                break;
+                            }
+                            byte* basePtr = rawData.Data;
+                            byte* rawPtr = basePtr;
+                            NtfsRecord* record = (NtfsRecord*)rawPtr;
+                            record->ApplyFixups();
+                            rawPtr += sizeof(NtfsRecord);
+                            ulong blockVCN = *((ulong*)rawPtr);
+                            rawPtr += sizeof(ulong);
+                            NtfsNodeHeader* nodeHeader = (NtfsNodeHeader*)rawPtr;
+                            rawPtr += sizeof(NtfsNodeHeader);
+                            nodeHeader->Dump();
+                            for(uint currentOffset = nodeHeader->OffsetToFirstIndexEntry;
+                                currentOffset < nodeHeader->OffsetToEndOfIndexEntries;
+                                )
+                            {
+                                NtfsIndexEntry* currentEntry = (NtfsIndexEntry*)(basePtr + currentOffset);
+                                continue;
+                            }
+                            Helpers.BinaryDump(rawData.Data, 256);
+                        }
+                        throw new NotImplementedException();
                     }
-                    // TODO : Account for sort order.
-                    switch(string.Compare(childName, name)) {
-                        case -1:
-                        case 0:
-                            parentEntry = scannedEntry;
-                            return false;
-                        case 1:
-                            return true;
-                        default:
-                            throw new ApplicationException();
-                    }
-                });
-                if (null == parentEntry) {
-                    return null;
                 }
+                throw new NotImplementedException();
 
                 NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)fromRecord + fromRecord->AttributesOffset);
                 // Walk attributes.
@@ -306,7 +334,7 @@ namespace RawDiskReadPOC.NTFS
                 //}
             }
             finally {
-                if (null == result) {
+                if ((null == result) && (null != clusterData)) {
                     clusterData.Dispose();
                 }
             }

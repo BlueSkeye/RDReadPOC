@@ -6,6 +6,13 @@ namespace RawDiskReadPOC.NTFS
 {
     internal struct NtfsNonResidentAttribute
     {
+        /// <summary>Return number of bytes used for disk storage of this non resident attribute value.
+        /// This knowledge is required for <see cref="NtfsRecord"/> fixup application.</summary>
+        internal uint OnDiskSize
+        {
+            get { return (0 == CompressionUnit) ? (uint)InitializedSize : (uint)CompressedSize; }
+        }
+
         internal void AssertNonResident()
         {
             if (0 == Header.Nonresident) { throw new ApplicationException(); }
@@ -96,9 +103,23 @@ namespace RawDiskReadPOC.NTFS
         /// <returns></returns>
         internal Stream OpenDataStream(List<LogicalChunk> chunks = null)
         {
-            if (0 != this.CompressionUnit) { throw new NotSupportedException(); }
+            if (0 != this.CompressionUnit) {
+                throw new NotSupportedException("Compressed streams not supported.");
+            }
             if (null == chunks) { chunks = DecodeRunArray(); }
-            return new NonResidentDataStream(chunks);
+            return new NonResidentDataStream(chunks, false);
+        }
+
+        /// <summary>Open a data stream on the data part of this attribute.</summary>
+        /// <param name="chunks">Optional parameter.</param>
+        /// <returns></returns>
+        internal IClusterStream OpenDataClusterStream(List<LogicalChunk> chunks = null)
+        {
+            if (0 != this.CompressionUnit) {
+                throw new NotSupportedException("Compressed streams not supported.");
+            }
+            if (null == chunks) { chunks = DecodeRunArray(); }
+            return new NonResidentDataStream(chunks, true);
         }
 
         /// <summary>An ATTRIBUTE structure containing members common to resident and
@@ -122,7 +143,7 @@ namespace RawDiskReadPOC.NTFS
         internal uint Alignment2;
         /// <summary>The size, in bytes, of disk space allocated to hold the attribute value</summary>
         internal ulong AllocatedSize;
-        /// <summary>The size, in bytes, of the attribute value.This may be larger than the AllocatedSize
+        /// <summary>The size, in bytes, of the attribute value. This may be larger than the AllocatedSize
         /// if the attribute value is compressed or sparse.</summary>
         internal ulong DataSize;
         /// <summary>The size, in bytes, of the initialized portion of the attribute value.</summary>
@@ -142,9 +163,9 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
-        private class NonResidentDataStream : Stream
+        private class NonResidentDataStream : Stream, IClusterStream
         {
-            internal NonResidentDataStream(List<LogicalChunk> chunks)
+            internal NonResidentDataStream(List<LogicalChunk> chunks, bool clusterStreamBehavior)
             {
                 _partition = NtfsPartition.Current ?? throw new InvalidOperationException();
                 _chunks = chunks ?? throw new InvalidOperationException();
@@ -158,6 +179,7 @@ namespace RawDiskReadPOC.NTFS
                 foreach(LogicalChunk scannedChunk in chunks) {
                     _length += (long)(scannedChunk.ClustersCount * _clusterSize);
                 }
+                _clusterStreamBehavior = clusterStreamBehavior;
             }
 
             public override bool CanRead
@@ -167,7 +189,7 @@ namespace RawDiskReadPOC.NTFS
 
             public override bool CanSeek
             {
-                get { return true; }
+                get { return !_clusterStreamBehavior; }
             }
 
             public override bool CanWrite
@@ -194,8 +216,123 @@ namespace RawDiskReadPOC.NTFS
                 throw new NotImplementedException();
             }
 
+            IPartitionClusterData IClusterStream.ReadNextCluster()
+            {
+                if (!_clusterStreamBehavior) {
+                    throw new NotSupportedException("Not a cluster stream.");
+                }
+                int clusterReadResult = _ReadNextCluster();
+                IPartitionClusterData result = _clusterData;
+                _clusterData = null;
+                if (0 >= clusterReadResult) {
+                    if (null != result) {
+                        result.Dispose();
+                    }
+                    return null;
+                }
+                return result;
+            }
+
+            private int _ReadNextCluster()
+            {
+                int result = 0;
+                uint sectorsPerCluster = _partition.SectorsPerCluster;
+                ulong readFromCluster;
+                uint readSectorsCount;
+                ulong remainingSectorsInChunk;
+
+                if ((null != _currentChunk) && (_currentChunkClusterIndex < _currentChunk.ClustersCount)) {
+                    // Some clusters remaining in current chunk.
+                    readFromCluster = _currentChunkClusterIndex + _currentChunk.FirstLogicalClusterNumber;
+                }
+                else {
+                    // Need to go on with next chunk.
+                    if (!_chunkEnumerator.MoveNext()) {
+                        // No more data available from the partition.
+                        return result;
+                    }
+                    _currentChunk = _chunkEnumerator.Current;
+                    _currentChunkClusterIndex = 0;
+                    _currentChunkRemainingBytesCount = _clusterSize * _currentChunk.ClustersCount;
+                    readFromCluster = _currentChunk.FirstLogicalClusterNumber;
+                }
+                ulong remainingClustersInChunk = _currentChunk.ClustersCount - _currentChunkClusterIndex;
+                remainingSectorsInChunk = remainingClustersInChunk * sectorsPerCluster;
+
+                // How many blocks should we read ?
+                readSectorsCount = (uint)MAX_READ_SECTORS;
+                if (readSectorsCount > remainingSectorsInChunk) {
+                    readSectorsCount = (uint)remainingSectorsInChunk;
+                }
+                if (FeaturesContext.InvariantChecksEnabled) {
+                    if (0 != (readSectorsCount % sectorsPerCluster)) {
+                        throw new ApplicationException();
+                    }
+                }
+                // Perform read and reinitialize some internal values.
+                ulong readFromSector = readFromCluster * sectorsPerCluster;
+                _clusterData = _partition.ReadSectors(readFromSector, readSectorsCount);
+                if (null == _clusterData) {
+                    throw new ApplicationException();
+                }
+                _clusterDataPosition = 0;
+                _currentChunkClusterIndex++;
+                if (FeaturesContext.InvariantChecksEnabled) {
+                    if (int.MaxValue < _clusterData.DataSize) {
+                        throw new ApplicationException();
+                    }
+                }
+                return (int)_clusterData.DataSize;
+            }
+
+            // Preserved during debugging.
+            //uint sectorsPerCluster = _partition.SectorsPerCluster;
+            //ulong readFromCluster;
+            //uint readSectorsCount;
+            //ulong remainingSectorsInChunk;
+
+            //if ((null != _currentChunk) && (_currentChunkClusterIndex < _currentChunk.ClustersCount)) {
+            //    // Some clusters remaining in current chunk.
+            //    readFromCluster = _currentChunkClusterIndex + _currentChunk.FirstLogicalClusterNumber;
+            //}
+            //else {
+            //    // Need to go on with next chunk.
+            //    if (!_chunkEnumerator.MoveNext()) {
+            //        // No more data available from the partition.
+            //        return result;
+            //    }
+            //    _currentChunk = _chunkEnumerator.Current;
+            //    _currentChunkClusterIndex = 0;
+            //    _currentChunkRemainingBytesCount = _clusterSize * _currentChunk.ClustersCount;
+            //    readFromCluster = _currentChunk.FirstLogicalClusterNumber;
+            //}
+            //ulong remainingClustersInChunk = _currentChunk.ClustersCount - _currentChunkClusterIndex;
+            //remainingSectorsInChunk = remainingClustersInChunk * sectorsPerCluster;
+
+            //// How many blocks should we read ?
+            //readSectorsCount = (uint)MAX_READ_SECTORS;
+            //if (readSectorsCount > remainingSectorsInChunk) {
+            //    readSectorsCount = (uint)remainingSectorsInChunk;
+            //}
+            //if (FeaturesContext.InvariantChecksEnabled) {
+            //    if (0 != (readSectorsCount % sectorsPerCluster)) {
+            //        throw new ApplicationException();
+            //    }
+            //}
+            //// Perform read and reinitialize some internal values.
+            //ulong readFromSector = readFromCluster * sectorsPerCluster;
+            //_clusterData = _partition.ReadSectors(readFromSector, readSectorsCount);
+            //if (null == _clusterData) {
+            //    throw new ApplicationException();
+            //}
+            //_clusterDataPosition = 0;
+            //_currentChunkClusterIndex += (readSectorsCount / sectorsPerCluster);
+
             public override unsafe int Read(byte[] buffer, int offset, int count)
             {
+                if (_clusterStreamBehavior) {
+                    throw new NotSupportedException("Not supported by cluster stream.");
+                }
                 // Arguments validation.
                 if (null == buffer) { throw new ArgumentNullException(); }
                 if (0 > offset) { throw new ArgumentOutOfRangeException(); }
@@ -210,46 +347,11 @@ namespace RawDiskReadPOC.NTFS
                         if ((null == _clusterData) || (_clusterDataPosition >= _clusterData.DataSize)) {
                             // No more available data in local buffer. Must trigger another read from
                             // underlying partition.
-                            ulong readFromCluster;
-                            uint readSectorsCount;
-                            ulong remainingSectorsInChunk;
-
-                            if ((null != _currentChunk) && (_currentChunkClusterIndex < _currentChunk.ClustersCount)) {
-                                // Some clusters remaining in current chunk.
-                                readFromCluster = _currentChunkClusterIndex + _currentChunk.FirstLogicalClusterNumber;
-                            }
-                            else {
-                                // Need to go on with next chunk.
-                                if (!_chunkEnumerator.MoveNext()) {
-                                    // No more data available from the partition.
-                                    return result;
-                                }
-                                _currentChunk = _chunkEnumerator.Current;
-                                _currentChunkClusterIndex = 0;
-                                _currentChunkRemainingBytesCount = _clusterSize * _currentChunk.ClustersCount;
-                                readFromCluster = _currentChunk.FirstLogicalClusterNumber;
-                            }
-                            ulong remainingClustersInChunk = _currentChunk.ClustersCount - _currentChunkClusterIndex;
-                            remainingSectorsInChunk = remainingClustersInChunk * sectorsPerCluster;
-
-                            // How many blocks should we read ?
-                            readSectorsCount = (uint)MAX_READ_SECTORS;
-                            if (readSectorsCount > remainingSectorsInChunk) {
-                                readSectorsCount = (uint)remainingSectorsInChunk;
-                            }
-                            if (FeaturesContext.InvariantChecksEnabled) {
-                                if (0 != (readSectorsCount % sectorsPerCluster)) {
-                                    throw new ApplicationException();
-                                }
-                            }
-                            // Perform read and reinitialize some internal values.
-                            ulong readFromSector = readFromCluster * sectorsPerCluster;
-                            _clusterData = _partition.ReadSectors(readFromSector, readSectorsCount);
-                            if (null == _clusterData) {
-                                throw new ApplicationException();
+                            if (0 >= _ReadNextCluster()) {
+                                return result;
                             }
                             _clusterDataPosition = 0;
-                            _currentChunkClusterIndex += (readSectorsCount / sectorsPerCluster);
+                            _currentChunkClusterIndex++;
                         }
                         ulong readCount = remainingExpectedBytes;
                         if (_currentChunkRemainingBytesCount < remainingExpectedBytes) {
@@ -278,6 +380,9 @@ namespace RawDiskReadPOC.NTFS
 
             public override long Seek(long offset, SeekOrigin origin)
             {
+                if (_clusterStreamBehavior) {
+                    throw new NotSupportedException("Not supported by cluster stream.");
+                }
                 switch (origin) {
                     case SeekOrigin.Begin:
                         if (0 > offset) {
@@ -331,6 +436,7 @@ namespace RawDiskReadPOC.NTFS
             private int _clusterDataPosition;
             /// <summary>Cluster size captured at stream creation time for optimization purpose.</summary>
             private ulong _clusterSize;
+            private bool _clusterStreamBehavior;
             /// <summary>Current chunk we are reading from.</summary>
             private LogicalChunk _currentChunk;
             /// <summary>Index [0..ClustersCount[ of the first cluster that has not yet been copied

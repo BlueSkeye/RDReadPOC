@@ -21,8 +21,8 @@ namespace RawDiskReadPOC.NTFS
 
         internal unsafe void Dump()
         {
-            Console.WriteLine("\t\t\tLen {0}, AttrL {1}, Flgs 0x{2:X} {3}",
-                EntryLength, ContentLength, Flags, LastIndexEntry ? "LAST" : string.Empty);
+            Console.WriteLine("\t\t\tFRef {0}, Len {1}, AttrL {2}, Flgs 0x{3:X} {4}",
+                FileReference, EntryLength, ContentLength, Flags, LastIndexEntry ? "LAST" : string.Empty);
             if (HasSubNode) {
                 fixed(NtfsIndexEntry* pThis = &this) {
                     ulong* pChildVCN = (ulong*)(((byte*)pThis + sizeof(NtfsIndexEntry)) + EntryLength - sizeof(ulong));
@@ -35,7 +35,7 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
-        internal ulong _undefined;
+        internal ulong FileReference;
         /// <summary>The size, in bytes, of this entry.</summary>
         internal ushort EntryLength;
         /// <summary>The size, in bytes, of the attribute that is indexed</summary>

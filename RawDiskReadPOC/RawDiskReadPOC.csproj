@@ -55,9 +55,11 @@
     <Compile Include="FeaturesContext.cs" />
     <Compile Include="GenericPartition.cs" />
     <Compile Include="Helpers.cs" />
+    <Compile Include="IClusterStream.cs" />
     <Compile Include="IPartitionClusterData.cs" />
     <Compile Include="Natives.cs" />
     <Compile Include="NTFS\NtfsIndexEntry.cs" />
+    <Compile Include="NTFS\NtfsIndexEntryHandlerDelegate.cs" />
     <Compile Include="NTFS\NtfsLoggedUtilyStreamAttribute.cs" />
     <Compile Include="NTFS\NtfsNodeHeader.cs" />
     <Compile Include="NTFS\NtfsPartition.cs" />

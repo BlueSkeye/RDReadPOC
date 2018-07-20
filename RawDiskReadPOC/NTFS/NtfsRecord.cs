@@ -6,31 +6,30 @@ namespace RawDiskReadPOC.NTFS
     /// <summary>http://ultradefrag.sourceforge.net/doc/man/ntfs/NTFS_On_Disk_Structure.pdf</summary>
     internal struct NtfsRecord
     {
-        internal unsafe void ApplyFixups(uint usedBytesCount)
+        internal unsafe void ApplyFixups()
         {
+            NtfsPartition partition = NtfsPartition.Current;
+            uint bytesPerSector = partition.BytesPerSector;
+            uint sectorsPerCluster = partition.SectorsPerCluster;
             ushort fixupCount = UsaCount;
-            uint bytesPerSector = NtfsPartition.Current.BytesPerSector;
             fixed(NtfsRecord* nativeRecord = &this) {
-                ushort fullSectorCount = (ushort)(usedBytesCount / bytesPerSector);
-                if (0 < fixupCount) {
-                    if (fullSectorCount > fixupCount) {
-                        throw new ApplicationException("Not enough fixups.");
-                    }
-                    // Adjust fixup count to effective record size.
-                    ushort* pFixup = (ushort*)((byte*)nativeRecord + UsaOffset);
-                    ushort fixupTag = *(pFixup++);
-                    byte* fixLocation = (byte*)nativeRecord + bytesPerSector - sizeof(ushort);
-                    for (ushort fixupIndex = 0; fixupIndex < fullSectorCount; fixupIndex++, fixLocation += bytesPerSector) {
-                        if (*((ushort*)fixLocation) != fixupTag) {
-                            throw new ApplicationException();
-                        }
-                        *((ushort*)fixLocation) = *(pFixup++);
+                // Check magic number on every sector.
+                byte* fixLocation = (byte*)nativeRecord + bytesPerSector - sizeof(ushort);
+                ushort* pFixup = (ushort*)((byte*)nativeRecord + UsaOffset);
+                ushort fixupTag = *(pFixup++);
+                for (int sectorIndex = 0; sectorIndex < fixupCount; sectorIndex++, fixLocation += bytesPerSector) {
+                    ushort fixedValue = *((ushort*)fixLocation);
+                    if (fixedValue != fixupTag) {
+                        throw new ApplicationException();
                     }
                 }
-                else {
-                    if (1 <= fullSectorCount) {
-                        throw new ApplicationException("Required fixups are missing.");
+                // Apply those fixups that are defined.
+                fixLocation = (byte*)nativeRecord + bytesPerSector - sizeof(ushort);
+                for (int sectorIndex = 0; sectorIndex < fixupCount; sectorIndex++, fixLocation += bytesPerSector) {
+                    if (*((ushort*)fixLocation) != fixupTag) {
+                        throw new ApplicationException();
                     }
+                    *((ushort*)fixLocation) = *(pFixup++);
                 }
             }
         }
