@@ -43,9 +43,9 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe void Dump()
         {
             GenericEntry.Dump();
-            Console.WriteLine("\t\t\tFRN 0x{0:X16}",
+            Console.WriteLine(Helpers.Indent(3) + "FRN 0x{0:X16}",
                 FileReferenceNumber);
-            Console.WriteLine("\t\t\tName : {0}", Name ?? "UNNAMED");
+            Console.WriteLine(Helpers.Indent(3) + "Name : {0}", Name ?? "UNNAMED");
         }
 
         [FieldOffset(0)]

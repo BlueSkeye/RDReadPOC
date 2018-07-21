@@ -20,16 +20,28 @@ namespace RawDiskReadPOC.NTFS
                 for (int sectorIndex = 0; sectorIndex < fixupCount; sectorIndex++, fixLocation += bytesPerSector) {
                     ushort fixedValue = *((ushort*)fixLocation);
                     if (fixedValue != fixupTag) {
-                        throw new ApplicationException();
+                        Console.WriteLine("WARNING : fixup tag mismatch.");
                     }
                 }
                 // Apply those fixups that are defined.
                 fixLocation = (byte*)nativeRecord + bytesPerSector - sizeof(ushort);
+                pFixup = (ushort*)((byte*)nativeRecord + UsaOffset);
+                pFixup++; // Skip fixup tag.
                 for (int sectorIndex = 0; sectorIndex < fixupCount; sectorIndex++, fixLocation += bytesPerSector) {
-                    if (*((ushort*)fixLocation) != fixupTag) {
-                        throw new ApplicationException();
-                    }
                     *((ushort*)fixLocation) = *(pFixup++);
+                }
+            }
+        }
+
+        private void AssertTag(byte[] expected)
+        {
+            if ((null == expected) || (4 != expected.Length)) {
+                throw new ArgumentException();
+            }
+            for(int index = 0; index < expected.Length; index++) {
+                // TODO : Should perform an uint value comparison.
+                if (expected[index] != (byte)(this.Type & ((uint)0xFF << index))) {
+                    throw new ApplicationException();
                 }
             }
         }
@@ -56,7 +68,15 @@ namespace RawDiskReadPOC.NTFS
                 }
             }
         }
-        
+
+        internal void EnumerateIndex()
+        {
+            AssertTag(INDEX_TAG_LE);
+            throw new NotImplementedException();
+        }
+
+        private const string IndexTag = "INDX";
+        private static byte[] INDEX_TAG_LE = Encoding.ASCII.GetBytes(IndexTag);
         /// <summary>The type of NTFS record.When the value of Type is considered as a sequence of
         /// four one-byte characters, it normally spells an acronym for the type. Defined values
         /// include: ‘FILE’, ‘INDX’, ‘BAAD’, ‘HOLE’, ‘CHKD’</summary>

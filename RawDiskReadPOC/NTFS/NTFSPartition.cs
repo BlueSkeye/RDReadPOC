@@ -256,15 +256,18 @@ namespace RawDiskReadPOC.NTFS
                         throw new ApplicationException("Unamed index entry found.");
                     }
                     // TODO : Account for sort order. 
+                    Console.WriteLine("RI name '{0}'", name);
                     switch (string.Compare(childName, name)) {
                         case -1:
                             indexAllocationVCN = scannedEntry->ChildNodeVCN;
+                            Console.WriteLine("Found");
                             return false;
                         case 0:
                             // Don't know yet how to retrieve an item that is located in teh index_root
                             // attribute.
                             throw new NotImplementedException();
                         case 1:
+                            Console.WriteLine("Continue");
                             return true;
                         default:
                             throw new ApplicationException();
@@ -275,6 +278,8 @@ namespace RawDiskReadPOC.NTFS
                 }
                 // Continue with an index allocation entry.
                 NtfsIndexAllocationAttribute* indexAllocationAttribute = null;
+                // The index allocation attribute holds those files that are "after" the last root
+                // index entry according to the sort order.
                 NtfsNonResidentAttribute * indexAllocationAttributeHeader =
                     (NtfsNonResidentAttribute*)(fromRecord->GetAttribute(NtfsAttributeType.AttributeIndexAllocation));
                 // The Index allocation attribute may be missing.
@@ -284,20 +289,23 @@ namespace RawDiskReadPOC.NTFS
                     }
                     indexAllocationAttributeHeader->Dump();
                     using (IClusterStream dataStream = indexAllocationAttributeHeader->OpenDataClusterStream()) {
-                        while (true) {
-                            IPartitionClusterData rawData = dataStream.ReadNextCluster();
-
+                        IPartitionClusterData rawData = null;
+                        for (ulong clusterIndex = 0; clusterIndex <= indexAllocationVCN; clusterIndex++) {
+                            rawData = dataStream.ReadNextCluster();
                             if (null == rawData) {
-                                break;
+                                throw new ApplicationException();
                             }
-                            byte* basePtr = rawData.Data;
-                            byte* rawPtr = basePtr;
+                            DebugVCNCluster(rawData);
+                        }
+                        while (true) {
+                            byte* rawPtr = rawData.Data;
                             NtfsRecord* record = (NtfsRecord*)rawPtr;
                             record->ApplyFixups();
                             rawPtr += sizeof(NtfsRecord);
                             ulong blockVCN = *((ulong*)rawPtr);
                             rawPtr += sizeof(ulong);
                             NtfsNodeHeader* nodeHeader = (NtfsNodeHeader*)rawPtr;
+                            byte* basePtr = (byte*)nodeHeader;
                             rawPtr += sizeof(NtfsNodeHeader);
                             nodeHeader->Dump();
                             for(uint currentOffset = nodeHeader->OffsetToFirstIndexEntry;
@@ -305,7 +313,10 @@ namespace RawDiskReadPOC.NTFS
                                 )
                             {
                                 NtfsIndexEntry* currentEntry = (NtfsIndexEntry*)(basePtr + currentOffset);
-                                continue;
+                                NtfsFileNameAttribute* fileName = (NtfsFileNameAttribute*)(basePtr + currentOffset + sizeof(NtfsIndexEntry));
+                                string name = fileName->GetName();
+                                currentOffset += currentEntry->EntryLength;
+                                Console.WriteLine(name);
                             }
                             Helpers.BinaryDump(rawData.Data, 256);
                         }
@@ -339,6 +350,30 @@ namespace RawDiskReadPOC.NTFS
                 }
             }
             throw new NotImplementedException();
+        }
+
+        private static unsafe void DebugVCNCluster(IPartitionClusterData candidate)
+        {
+            byte* rawPtr = candidate.Data;
+            NtfsRecord* record = (NtfsRecord*)rawPtr;
+            record->ApplyFixups();
+            rawPtr += sizeof(NtfsRecord);
+            ulong blockVCN = *((ulong*)rawPtr);
+            rawPtr += sizeof(ulong);
+            NtfsNodeHeader* nodeHeader = (NtfsNodeHeader*)rawPtr;
+            byte* basePtr = (byte*)nodeHeader;
+            rawPtr += sizeof(NtfsNodeHeader);
+            for(uint currentOffset = nodeHeader->OffsetToFirstIndexEntry;
+                currentOffset < nodeHeader->OffsetToEndOfIndexEntries;
+                )
+            {
+                NtfsIndexEntry* currentEntry = (NtfsIndexEntry*)(basePtr + currentOffset);
+                NtfsFileNameAttribute* fileName = (NtfsFileNameAttribute*)(basePtr + currentOffset + sizeof(NtfsIndexEntry));
+                string name = fileName->GetName();
+                currentOffset += currentEntry->EntryLength;
+                Console.WriteLine(name);
+            }
+            // Helpers.BinaryDump(candidate.Data, 256);
         }
 
         /// <summary>Find a file using it's partition relative path.</summary>

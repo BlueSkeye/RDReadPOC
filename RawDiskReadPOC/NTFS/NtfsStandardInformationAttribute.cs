@@ -7,18 +7,18 @@ namespace RawDiskReadPOC.NTFS
     {
         internal void Dump()
         {
-            Console.WriteLine("\tCR {0} ({1})",
+            Console.WriteLine(Helpers.Indent(1) + "CR {0} ({1})",
                 CreationTime, Helpers.DecodeTime(CreationTime));
-            Console.WriteLine("\tCH {0} ({1})",
+            Console.WriteLine(Helpers.Indent(1) + "CH {0} ({1})",
                 ChangeTime, Helpers.DecodeTime(ChangeTime));
-            Console.WriteLine("\tLW {0} ({1})",
+            Console.WriteLine(Helpers.Indent(1) + "LW {0} ({1})",
                 LastWriteTime, Helpers.DecodeTime(LastWriteTime));
-            Console.WriteLine("\tLA {0} ({1})",
+            Console.WriteLine(Helpers.Indent(1) + "LA {0} ({1})",
                 LastAccessTime, Helpers.DecodeTime(LastAccessTime));
-            Console.WriteLine("\tAttr {0} : {1}", FileAttributes, DecodeAttributes(FileAttributes));
-            Console.WriteLine("\tMaxv {0}, V# {1}, Clsid {2}",
+            Console.WriteLine(Helpers.Indent(1) + "Attr {0} : {1}", FileAttributes, DecodeAttributes(FileAttributes));
+            Console.WriteLine(Helpers.Indent(1) + "Maxv {0}, V# {1}, Clsid {2}",
                     MaxVersionsCount, VersionNumber, ClassId);
-            Console.WriteLine("\tQid {0}, Secid {1}, Qch {2}, Usn Ox{3:X8} ",
+            Console.WriteLine(Helpers.Indent(1) + "Qid {0}, Secid {1}, Qch {2}, Usn Ox{3:X8} ",
                     QuotaId, SecurityId, QuotaCharge, Usn);
             return;
         }

@@ -8,7 +8,7 @@ namespace RawDiskReadPOC.NTFS
     {
         internal unsafe void Dump()
         {
-            Console.WriteLine("\t\t1st off {0}, last off {1}, All off {2}, {3}",
+            Console.WriteLine(Helpers.Indent(2) + "1st off {0}, last off {1}, All off {2}, {3}",
                 OffsetToFirstIndexEntry, OffsetToEndOfIndexEntries, OffsetToEndOfAllocation, Flags);
         }
 

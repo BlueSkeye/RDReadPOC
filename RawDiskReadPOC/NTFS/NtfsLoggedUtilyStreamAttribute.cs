@@ -31,7 +31,7 @@ namespace RawDiskReadPOC.NTFS
                         bytesOnLine = 1;
                     }
                     if (1 == bytesOnLine) {
-                        Console.Write("\t");
+                        Console.Write(Helpers.Indent(1));
                     }
                     Console.Write("{0:X2} ", @byte);
                 }

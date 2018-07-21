@@ -89,11 +89,11 @@ namespace RawDiskReadPOC.NTFS
         internal void Dump()
         {
             Header.Dump();
-            Console.WriteLine("\tVCN 0x{0:X8}-0x{1:X8}, ROff {2}, CU {3}",
+            Console.WriteLine(Helpers.Indent(1) + "VCN 0x{0:X8}-0x{1:X8}, ROff {2}, CU {3}",
                 LowVcn, HighVcn, RunArrayOffset, CompressionUnit);
-            Console.WriteLine("\tAsize 0x{0:X8}, Dsize 0x{1:X8}",
+            Console.WriteLine(Helpers.Indent(1) + "Asize 0x{0:X8}, Dsize 0x{1:X8}",
                 AllocatedSize, DataSize);
-            Console.WriteLine("\tIsize 0x{0:X8}, Csize 0x{1:X8}",
+            Console.WriteLine(Helpers.Indent(1) + "Isize 0x{0:X8}, Csize 0x{1:X8}",
                 InitializedSize, CompressedSize);
             return;
         }

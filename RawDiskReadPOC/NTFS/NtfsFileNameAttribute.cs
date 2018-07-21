@@ -9,21 +9,21 @@ namespace RawDiskReadPOC.NTFS
     {
         internal void Dump()
         {
-            Console.WriteLine("\tRefNum 0x{0:X8}",
+            Console.WriteLine(Helpers.Indent(1) + "RefNum 0x{0:X8}",
                 DirectoryFileReferenceNumber);
-            Console.WriteLine("\tCR {0} ({1})",
+            Console.WriteLine(Helpers.Indent(1) + "CR {0} ({1})",
                 CreationTime, Helpers.DecodeTime(CreationTime));
-            Console.WriteLine("\tCH {0} ({1})",
+            Console.WriteLine(Helpers.Indent(1) + "CH {0} ({1})",
                 ChangeTime, Helpers.DecodeTime(ChangeTime));
-            Console.WriteLine("\tLW {0} ({1})",
+            Console.WriteLine(Helpers.Indent(1) + "LW {0} ({1})",
                 LastWriteTime, Helpers.DecodeTime(LastWriteTime));
-            Console.WriteLine("\tLA {0} ({1})",
+            Console.WriteLine(Helpers.Indent(1) + "LA {0} ({1})",
                 LastAccessTime, Helpers.DecodeTime(LastAccessTime));
-            Console.WriteLine("\tAlloc {0}, Size {1}",
+            Console.WriteLine(Helpers.Indent(1) + "Alloc {0}, Size {1}",
                 AllocatedSize, DataSize);
-            Console.WriteLine("\tAttr {0} : {1}",
+            Console.WriteLine(Helpers.Indent(1) + "Attr {0} : {1}",
                 FileAttributes, NtfsStandardInformationAttribute.DecodeAttributes(FileAttributes));
-            Console.WriteLine("\tNL {0}, Ty {1} ({2})",
+            Console.WriteLine(Helpers.Indent(1) + "NL {0}, Ty {1} ({2})",
                 NameLength, NameType, GetName());
         }
 

@@ -6,7 +6,7 @@ namespace RawDiskReadPOC.NTFS
     {
         internal void Dump()
         {
-            Console.WriteLine("\tEoff {0}, IBL {1}, Asize {2}, FL {3}",
+            Console.WriteLine(Helpers.Indent(1) + "Eoff {0}, IBL {1}, Asize {2}, FL {3}",
                 EntriesOffset, IndexBlockLength, AllocatedSize, Flags);
         }
         

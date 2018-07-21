@@ -21,17 +21,17 @@ namespace RawDiskReadPOC.NTFS
 
         internal unsafe void Dump()
         {
-            Console.WriteLine("\t\t\tFRef {0}, Len {1}, AttrL {2}, Flgs 0x{3:X} {4}",
+            Console.WriteLine(Helpers.Indent(3) + "FRef {0}, Len {1}, AttrL {2}, Flgs 0x{3:X} {4}",
                 FileReference, EntryLength, ContentLength, Flags, LastIndexEntry ? "LAST" : string.Empty);
             if (HasSubNode) {
                 fixed(NtfsIndexEntry* pThis = &this) {
                     ulong* pChildVCN = (ulong*)(((byte*)pThis + sizeof(NtfsIndexEntry)) + EntryLength - sizeof(ulong));
-                    Console.WriteLine("\t\t\tChildVCN 0x{0:X8}",
+                    Console.WriteLine(Helpers.Indent(3) + "ChildVCN 0x{0:X8}",
                         *pChildVCN);
                 }
             }
             else {
-                Console.WriteLine("\t\t\tNo child");
+                Console.WriteLine(Helpers.Indent(3) + "No child");
             }
         }
 

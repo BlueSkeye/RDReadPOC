@@ -6,7 +6,7 @@ namespace RawDiskReadPOC.NTFS
     {
         internal void Dump()
         {
-            Console.WriteLine("\tTODO dump content");
+            Console.WriteLine(Helpers.Indent(1) + "TODO dump content");
             return;
         }
     }

@@ -10,15 +10,14 @@ namespace RawDiskReadPOC.NTFS
     {
         internal unsafe void Dump()
         {
-            Console.WriteLine("\tType {0}, Coll {1}, BPIR {2}, CPIR {3}",
+            Console.WriteLine(Helpers.Indent(1) + "Type {0}, Coll {1}, BPIR {2}, CPIR {3}",
                 Helpers.uint32ToUnicodeString(Type),
                 // Helpers.uint32ToUnicodeString(CollationRule),
                 CollationRule,
                 BytesPerIndexRecord, ClustersPerIndexRecord);
             int entryIndex = 0;
             EnumerateIndexEntries(delegate (NtfsDirectoryIndexEntry* scannedEntry) {
-                Console.WriteLine("\t\tentry #{0}", entryIndex++);
-                scannedEntry->BinaryDump();
+                Console.WriteLine(Helpers.Indent(2) + "entry #{0}", entryIndex++);
                 scannedEntry->Dump();
                 return true;
             });

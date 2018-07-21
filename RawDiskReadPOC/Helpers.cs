@@ -5,6 +5,25 @@ namespace RawDiskReadPOC
 {
     internal static class Helpers
     {
+        static Helpers()
+        {
+            _Indentations = new string[10];
+            for(int index = 0; index < _Indentations.Length; index++) {
+                _Indentations[index] = new string(' ', index * 2);
+            }
+        }
+
+        internal static string Indent(int count)
+        {
+            if (0 > count) {
+                throw new ArgumentOutOfRangeException("count");
+            }
+            if (count >= _Indentations.Length) {
+                throw new ArgumentOutOfRangeException("count");
+            }
+            return _Indentations[count];
+        }
+
         internal static unsafe void BinaryDump(byte* buffer, uint size)
         {
             DumpedAddress = buffer;
@@ -70,5 +89,6 @@ namespace RawDiskReadPOC
 
         internal static unsafe byte* DumpedAddress;
         private static readonly DateTime Epoch = new DateTime(1601, 1, 1);
+        private static string[] _Indentations;
     }
 }

@@ -9,7 +9,7 @@ namespace RawDiskReadPOC.NTFS
     {
         internal void Dump()
         {
-            Console.WriteLine("\t\tBVcn 0x{0:X8}",
+            Console.WriteLine(Helpers.Indent(2) + "BVcn 0x{0:X8}",
                 IndexBlockVcn);
             DirectoryIndex.Dump();
         }
