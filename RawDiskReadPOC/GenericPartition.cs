@@ -89,6 +89,11 @@ namespace RawDiskReadPOC
                 uint bytesPerSector = PartitionManager.Singleton.Geometry.BytesPerSector;
                 uint expectedCount = sectorsCount * bytesPerSector;
                 result = GetClusterBufferChain(expectedCount);
+                if (FeaturesContext.DataPoolChecksEnabled) {
+                    if (expectedCount > result.DataSize) {
+                        throw new ApplicationException();
+                    }
+                }
                 ulong offset = (logicalSectorId + StartSector) * bytesPerSector;
                 uint totalBytesRead = 0;
                 // Prevent concurrent reads on this partition.

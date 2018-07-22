@@ -8,6 +8,8 @@ namespace RawDiskReadPOC.NTFS
     {
         internal unsafe void ApplyFixups()
         {
+            // TODO : Should track already fixed records otherwise we encounter spurious fixup
+            // mismatches. Tracked record should be reset on Disposal.
             NtfsPartition partition = NtfsPartition.Current;
             uint bytesPerSector = partition.BytesPerSector;
             uint sectorsPerCluster = partition.SectorsPerCluster;

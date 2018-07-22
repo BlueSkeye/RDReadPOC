@@ -172,7 +172,7 @@ namespace RawDiskReadPOC.NTFS
                 _chunkEnumerator = _chunks.GetEnumerator();
                 // Optimization.
                 _clusterSize = _partition.ClusterSize;
-                MAX_READ_SECTORS = (int)(_partition.SectorsPerCluster * 8);
+                MAX_READ_SECTORS = _partition.SectorsPerCluster;
                 BUFFER_SIZE = (int)(MAX_READ_SECTORS * _partition.BytesPerSector);
                 // Compute length.
                 _length = 0;
@@ -260,9 +260,11 @@ namespace RawDiskReadPOC.NTFS
                 remainingSectorsInChunk = remainingClustersInChunk * sectorsPerCluster;
 
                 // How many blocks should we read ?
-                readSectorsCount = (uint)MAX_READ_SECTORS;
-                if (readSectorsCount > remainingSectorsInChunk) {
-                    readSectorsCount = (uint)remainingSectorsInChunk;
+                readSectorsCount = MAX_READ_SECTORS;
+                if (FeaturesContext.InvariantChecksEnabled) {
+                    if (readSectorsCount > remainingSectorsInChunk) {
+                        throw new ApplicationException();
+                    }
                 }
                 if (FeaturesContext.InvariantChecksEnabled) {
                     if (0 != (readSectorsCount % sectorsPerCluster)) {
@@ -424,7 +426,7 @@ namespace RawDiskReadPOC.NTFS
             }
 
             private readonly int BUFFER_SIZE;
-            private readonly int MAX_READ_SECTORS;
+            private readonly uint MAX_READ_SECTORS;
             /// <summary>An enumerator for logical chunks this stream is build upon.</summary>
             private IEnumerator<LogicalChunk> _chunkEnumerator;
             /// <summary></summary>
