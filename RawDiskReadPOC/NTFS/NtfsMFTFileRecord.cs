@@ -16,8 +16,8 @@ namespace RawDiskReadPOC.NTFS
             // Capture raw data.
             NtfsFileRecord* record = (NtfsFileRecord*)rawData;
             int copiedBytesCount = (int)record->BytesAllocated;
-            _localBuffer = (byte*)Marshal.AllocCoTaskMem(copiedBytesCount);
-            Helpers.Memcpy(rawData, _localBuffer, copiedBytesCount);
+            _localBuffer = (NtfsFileRecord*)(byte*)Marshal.AllocCoTaskMem(copiedBytesCount);
+            Helpers.Memcpy(rawData, (byte*)_localBuffer, copiedBytesCount);
             return;
         }
 
@@ -65,6 +65,11 @@ namespace RawDiskReadPOC.NTFS
             result.AssertNoOverflowingAttribute();
             _gcPreventer.Add(owner, result);
             return result;
+        }
+
+        internal unsafe void EnumerateRecordAttributes(RecordAttributeEnumeratorCallbackDelegate callback)
+        {
+            _localBuffer->EnumerateRecordAttributes(callback);
         }
 
         internal unsafe void EnumerateRecords(FileRecordEnumeratorDelegate callback)
@@ -145,6 +150,6 @@ namespace RawDiskReadPOC.NTFS
 
         private static Dictionary<GenericPartition, NtfsMFTFileRecord> _gcPreventer =
             new Dictionary<GenericPartition, NtfsMFTFileRecord>();
-        internal unsafe byte* _localBuffer;
+        internal unsafe NtfsFileRecord* _localBuffer;
     }
 }

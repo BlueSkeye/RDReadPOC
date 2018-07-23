@@ -36,6 +36,7 @@ namespace RawDiskReadPOC.NTFS
             get { return _bytesPerSector; }
         }
 
+        /// <summary>Size in bytes.</summary>
         internal ulong MFTEntrySize { get; private set; }
 
         internal ulong ClustersPerIndexBuffer { get; private set; }
@@ -122,6 +123,7 @@ namespace RawDiskReadPOC.NTFS
                     currentRecordLBA += header->BytesAllocated / BytesPerSector;
                 }
             }
+            LoadVCNList();
         }
 
         /// <summary>Count files in current partition. We walk the bitmap and find which records are used.
@@ -135,6 +137,29 @@ namespace RawDiskReadPOC.NTFS
                 return true;
             });
             return result;
+        }
+
+        private static unsafe void DebugVCNCluster(IPartitionClusterData candidate)
+        {
+            byte* rawPtr = candidate.Data;
+            NtfsRecord* record = (NtfsRecord*)rawPtr;
+            record->ApplyFixups();
+            rawPtr += sizeof(NtfsRecord);
+            ulong blockVCN = *((ulong*)rawPtr);
+            rawPtr += sizeof(ulong);
+            NtfsNodeHeader* nodeHeader = (NtfsNodeHeader*)rawPtr;
+            byte* basePtr = (byte*)nodeHeader;
+            rawPtr += sizeof(NtfsNodeHeader);
+            for (uint currentOffset = nodeHeader->OffsetToFirstIndexEntry;
+                currentOffset < nodeHeader->OffsetToEndOfIndexEntries;
+                )
+            {
+                NtfsIndexEntry* currentEntry = (NtfsIndexEntry*)(basePtr + currentOffset);
+                NtfsFileNameAttribute* fileName = (NtfsFileNameAttribute*)(basePtr + currentOffset + sizeof(NtfsIndexEntry));
+                string name = fileName->GetName();
+                currentOffset += currentEntry->EntryLength;
+                Console.WriteLine(name);
+            }
         }
 
         internal unsafe void DumpFirstFileNames()
@@ -339,30 +364,6 @@ namespace RawDiskReadPOC.NTFS
             throw new NotImplementedException();
         }
 
-        private static unsafe void DebugVCNCluster(IPartitionClusterData candidate)
-        {
-            byte* rawPtr = candidate.Data;
-            NtfsRecord* record = (NtfsRecord*)rawPtr;
-            record->ApplyFixups();
-            rawPtr += sizeof(NtfsRecord);
-            ulong blockVCN = *((ulong*)rawPtr);
-            rawPtr += sizeof(ulong);
-            NtfsNodeHeader* nodeHeader = (NtfsNodeHeader*)rawPtr;
-            byte* basePtr = (byte*)nodeHeader;
-            rawPtr += sizeof(NtfsNodeHeader);
-            for(uint currentOffset = nodeHeader->OffsetToFirstIndexEntry;
-                currentOffset < nodeHeader->OffsetToEndOfIndexEntries;
-                )
-            {
-                NtfsIndexEntry* currentEntry = (NtfsIndexEntry*)(basePtr + currentOffset);
-                NtfsFileNameAttribute* fileName = (NtfsFileNameAttribute*)(basePtr + currentOffset + sizeof(NtfsIndexEntry));
-                string name = fileName->GetName();
-                currentOffset += currentEntry->EntryLength;
-                Console.WriteLine(name);
-            }
-            // Helpers.BinaryDump(candidate.Data, 256);
-        }
-
         /// <summary>Find a file using it's partition relative path.</summary>
         /// <param name="partitionPath">A path without the drive letter. The leading antislash is optional.
         /// </param>
@@ -400,15 +401,15 @@ namespace RawDiskReadPOC.NTFS
                 NtfsFileRecord* previousRecord = currentRecord;
                 try {
                     previousClusterData = clusterData;
-                    NtfsIndexEntry* entry = _FindChildItem(previousRecord, pathItems[index], out clusterData);
-                    if (null == entry) {
-                        throw new ApplicationException("Not found");
+                    NtfsIndexEntry* result = _FindChildItem(previousRecord, pathItems[index], out clusterData);
+                    if (null == result) {
+                        // Some part of the path is missing.
+                        return null;
                     }
                     if (index == leafItemIndex) {
-                        throw new NotImplementedException();
+                        return result;
                     }
-                    // Some part of the path is missing.
-                    return null;
+                    throw new ApplicationException("UNREACHABLE");
                 }
                 finally {
                     if (null != previousClusterData) {
@@ -440,6 +441,18 @@ namespace RawDiskReadPOC.NTFS
             // We need to provide an explicit size because the cluster size is not yet known and the buffer
             // allocation would fail.
             return _PartitionClusterData.CreateFromPool(unitSize, unitsCount, nonPooled);
+        }
+
+        internal unsafe NtfsFileRecord* GetFileRecord(ulong referenceNumber, out IPartitionClusterData data)
+        {
+            ulong offset = (referenceNumber >> 48);
+            ulong recordIndex = referenceNumber & 0xFFFFFFFFFFFF;
+            ulong recordsPerCluster = ClusterSize / 1024;
+            ulong relativeCluster = recordIndex / recordsPerCluster;
+            relativeCluster = VCNtoLCN(relativeCluster);
+            ulong clusterOffset = (recordIndex % recordsPerCluster) * 1024;
+            data = GetCluster(relativeCluster);
+            return (NtfsFileRecord*)(data.Data + clusterOffset);
         }
 
         internal unsafe void InterpretBootSector()
@@ -484,6 +497,25 @@ namespace RawDiskReadPOC.NTFS
                 VolumeSerialNumber = *(ulong*)(sectorPosition); sectorPosition += sizeof(ulong);
                 sectorPosition += sizeof(uint); // Unused
                 if (0x54 != (sectorPosition - sector)) { throw new ApplicationException(); }
+            }
+        }
+
+        private unsafe void LoadVCNList()
+        {
+            bool done = false;
+            this._mft.EnumerateRecordAttributes(delegate (NtfsAttribute* attribute) {
+                switch (attribute->AttributeType) {
+                    case NtfsAttributeType.AttributeData:
+                        done = true;
+                        NtfsNonResidentAttribute* nonResident = (NtfsNonResidentAttribute*)attribute;
+                        _chunks = nonResident->DecodeRunArray();
+                        return false;
+                    default:
+                        return true;
+                }
+            });
+            if (!done) {
+                throw new ApplicationException();
             }
         }
 
@@ -587,6 +619,19 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        private ulong VCNtoLCN(ulong virtualClusterNumber)
+        {
+            ulong cumulatedClustersCount = 0;
+            foreach(NtfsNonResidentAttribute.LogicalChunk mapping in _chunks) {
+                if ((cumulatedClustersCount + mapping.ClustersCount - 1) < virtualClusterNumber) {
+                    cumulatedClustersCount += mapping.ClustersCount;
+                    continue;
+                }
+                return mapping.FirstLogicalClusterNumber + (virtualClusterNumber - cumulatedClustersCount);
+            }
+            throw new ApplicationException();
+        }
+
         private unsafe void WalkUsedRecord(BitmapWalkerDelegate callback)
         {
             NtfsNonResidentAttribute* dataAttribute =
@@ -636,6 +681,7 @@ namespace RawDiskReadPOC.NTFS
         /// <summary>This program is for use on Windows only</summary>
         private const char PathSeparator = '\\';
         private uint _bytesPerSector;
+        private List<NtfsNonResidentAttribute.LogicalChunk> _chunks;
         private ulong[] _metadataFileLBAs = new ulong[16];
         private NtfsMFTFileRecord _mft;
         private Dictionary<string, ulong> _metadataFilesLBAByName = new Dictionary<string, ulong>();

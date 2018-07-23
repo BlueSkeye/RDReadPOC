@@ -84,13 +84,34 @@ namespace RawDiskReadPOC
                     NtfsPartition ntfsPartition = partition as NtfsPartition;
                     NtfsPartition.Current = ntfsPartition;
 
+                    ntfsPartition.MFT.RecordBase->EnumerateRecordAttributes(
+                        delegate(NtfsAttribute* attribute) {
+                            Console.WriteLine("{0} {1}",
+                                attribute->AttributeType, (0 == attribute->Nonresident) ? "Re" : "NR");
+                            if (0 != attribute->Nonresident) {
+                                NtfsNonResidentAttribute* nonResident = (NtfsNonResidentAttribute*)attribute;
+                                Console.WriteLine("\tA={0}, D={1}, I={2}", nonResident->AllocatedSize,
+                                    nonResident->DataSize, nonResident->InitializedSize);
+                            }
+                            return true;
+                        }
+                        );
                     // Basic functionnality tests. Don't remove.
                     //ntfsPartition.CountFiles();
                     //ntfsPartition.MonitorBadClusters();
                     //ntfsPartition.ReadBitmap();
 
                     // Locate file.
-                    NtfsIndexEntry* pageFileSysEntry = ntfsPartition.FindFile("pagefile.sys");
+                    NtfsIndexEntry* fileDescriptor = ntfsPartition.FindFile("pagefile.sys");
+                    IPartitionClusterData fileData = null;
+                    NtfsFileRecord* fileRecord =
+                        ntfsPartition.GetFileRecord(fileDescriptor->FileReference, out fileData);
+                    try {
+                        // TODO : Do something with the file.
+                    }
+                    finally {
+                        if (null != fileData) { fileData.Dispose(); }
+                    }
                     throw new NotImplementedException();
                 }
                 return 0;
