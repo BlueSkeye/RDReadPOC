@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 
 namespace RawDiskReadPOC.NTFS
 {
@@ -22,6 +23,33 @@ namespace RawDiskReadPOC.NTFS
         {
             fixed (NtfsFileRecord* dumped = &this) {
                 Helpers.BinaryDump((byte*)dumped, BytesInUse);
+            }
+        }
+
+        internal unsafe void BinaryDumpContent()
+        {
+            NtfsAttribute* dataAttribute = GetAttribute(NtfsAttributeType.AttributeData);
+            if (null == dataAttribute) {
+                throw new ApplicationException();
+            }
+            if (dataAttribute->IsResident) {
+                NtfsResidentAttribute* realDataAttribute = (NtfsResidentAttribute*)dataAttribute;
+                Helpers.BinaryDump((byte*)realDataAttribute + realDataAttribute->ValueOffset,
+                    realDataAttribute->ValueLength);
+            }
+            else {
+                NtfsNonResidentAttribute* realDataAttribute = (NtfsNonResidentAttribute*)dataAttribute;
+                byte[] localBuffer = new byte[16 * 1024];
+                fixed(byte* pBuffer = localBuffer) {
+                    using (Stream dataStream = realDataAttribute->OpenDataStream()) {
+                        while (true) {
+                            int readLength = dataStream.Read(localBuffer, 0, localBuffer.Length);
+                            if (-1 == readLength) { break; }
+                            Helpers.BinaryDump(pBuffer, (uint)readLength);
+                            if (readLength < localBuffer.Length) { break; }
+                        }
+                    }
+                }
             }
         }
 

@@ -16,9 +16,7 @@ namespace RawDiskReadPOC
             Assembly entryAssembly = Assembly.GetEntryAssembly();
             AssemblyName entryAssemblyName = entryAssembly.GetName();
             Console.WriteLine("{0} v{1}", entryAssemblyName.Name, entryAssemblyName.Version.ToString());
-            if (FeaturesContext.InvariantChecksEnabled) {
-                Console.WriteLine("Invariant checks enabled.");
-            }
+            FeaturesContext.Display();
         }
 
         private static unsafe void FindFile(string filename)
@@ -82,30 +80,27 @@ namespace RawDiskReadPOC
                 foreach (GenericPartition partition in _partitionManager.EnumeratePartitions()) {
                     if (!partition.ShouldCapture) { continue; }
                     NtfsPartition ntfsPartition = partition as NtfsPartition;
+                    // ntfsPartition.TraceMFT();
                     NtfsPartition.Current = ntfsPartition;
 
-                    ntfsPartition.MFT.RecordBase->EnumerateRecordAttributes(
-                        delegate(NtfsAttribute* attribute) {
-                            Console.WriteLine("{0} {1}",
-                                attribute->AttributeType, (0 == attribute->Nonresident) ? "Re" : "NR");
-                            if (0 != attribute->Nonresident) {
-                                NtfsNonResidentAttribute* nonResident = (NtfsNonResidentAttribute*)attribute;
-                                Console.WriteLine("\tA={0}, D={1}, I={2}", nonResident->AllocatedSize,
-                                    nonResident->DataSize, nonResident->InitializedSize);
-                            }
-                            return true;
-                        }
-                        );
                     // Basic functionnality tests. Don't remove.
                     //ntfsPartition.CountFiles();
                     //ntfsPartition.MonitorBadClusters();
                     //ntfsPartition.ReadBitmap();
 
                     // Locate file.
-                    NtfsIndexEntry* fileDescriptor = ntfsPartition.FindFile("pagefile.sys");
+                    string fileName = @"TEMP\AsciiTes.txt";
+                    NtfsIndexEntry* fileDescriptor = ntfsPartition.FindFile(fileName);
+                    if (null == fileDescriptor) {
+                        throw new System.IO.FileNotFoundException(fileName);
+                    }
                     IPartitionClusterData fileData = null;
                     NtfsFileRecord* fileRecord =
                         ntfsPartition.GetFileRecord(fileDescriptor->FileReference, out fileData);
+                    if ((null == fileRecord) || (null == fileData)) {
+                        throw new ApplicationException();
+                    }
+                    fileRecord->BinaryDumpContent();
                     try {
                         // TODO : Do something with the file.
                     }

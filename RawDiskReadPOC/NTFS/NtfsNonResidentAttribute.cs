@@ -6,6 +6,11 @@ namespace RawDiskReadPOC.NTFS
 {
     internal struct NtfsNonResidentAttribute
     {
+        internal bool IsResident
+        {
+            get { return Header.IsResident; }
+        }
+
         /// <summary>Return number of bytes used for disk storage of this non resident attribute value.
         /// This knowledge is required for <see cref="NtfsRecord"/> fixup application.</summary>
         internal uint OnDiskSize
@@ -15,7 +20,7 @@ namespace RawDiskReadPOC.NTFS
 
         internal void AssertNonResident()
         {
-            if (0 == Header.Nonresident) { throw new ApplicationException(); }
+            if (IsResident) { throw new ApplicationException(); }
         }
 
         internal void AssertVCN(ulong candidate)

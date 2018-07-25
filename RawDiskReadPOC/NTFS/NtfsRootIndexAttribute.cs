@@ -20,14 +20,17 @@ namespace RawDiskReadPOC.NTFS
                 Console.WriteLine(Helpers.Indent(2) + "entry #{0}", entryIndex++);
                 scannedEntry->Dump();
                 return true;
-            });
+            }, true);
         }
 
-        internal unsafe void EnumerateIndexEntries(NtfsIndexEntryHandlerDelegate callback)
+        internal unsafe void EnumerateIndexEntries(NtfsIndexEntryHandlerDelegate callback,
+            bool traceNodes)
         {
             fixed (NtfsRootIndexAttribute* pAttribute = &this) {
                 NtfsNodeHeader* pNodeHeader = (NtfsNodeHeader*)((byte*)pAttribute + sizeof(NtfsRootIndexAttribute));
-                pNodeHeader->Dump();
+                if (traceNodes) {
+                    pNodeHeader->Dump();
+                }
                 NtfsDirectoryIndexEntry* scannedEntry =
                     (NtfsDirectoryIndexEntry*)((byte*)pNodeHeader + pNodeHeader->OffsetToFirstIndexEntry);
                 while (true) {

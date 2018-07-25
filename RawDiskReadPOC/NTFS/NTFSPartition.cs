@@ -255,11 +255,13 @@ namespace RawDiskReadPOC.NTFS
         private unsafe NtfsIndexEntry* _FindChildItem(NtfsFileRecord* fromRecord, string childName,
             out IPartitionClusterData clusterData)
         {
-            fromRecord->Dump();
-            fromRecord->EnumerateRecordAttributes(delegate (NtfsAttribute* attribute) {
-                attribute->Dump();
-                return true;
-            });
+            if (FeaturesContext.FindFileAlgorithmTrace) {
+                fromRecord->Dump();
+                fromRecord->EnumerateRecordAttributes(delegate (NtfsAttribute* attribute) {
+                    attribute->Dump();
+                    return true;
+                });
+            }
             ulong currentRecordLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.Root];
             clusterData = null;
             NtfsRecord* result = null;
@@ -274,32 +276,45 @@ namespace RawDiskReadPOC.NTFS
                 }
                 NtfsRootIndexAttribute* rootIndexAttribute =
                     (NtfsRootIndexAttribute*)(rootIndexAttributeHeader->GetValue());
-                rootIndexAttributeHeader->Dump();
-                rootIndexAttribute->Dump();
+                if (FeaturesContext.FindFileAlgorithmTrace) {
+                    rootIndexAttributeHeader->Dump();
+                    rootIndexAttribute->Dump();
+                }
                 ulong indexAllocationVCN = ulong.MaxValue;
                 rootIndexAttribute->EnumerateIndexEntries(delegate (NtfsDirectoryIndexEntry* scannedEntry) {
                     string name = scannedEntry->Name;
-                    if ((null == name) && !scannedEntry->GenericEntry.LastIndexEntry) {
+                    bool lastEntry = scannedEntry->GenericEntry.LastIndexEntry;
+                    if (lastEntry) {
+                        indexAllocationVCN = scannedEntry->ChildNodeVCN;
+                        return false;
+                    }
+                    if (string.IsNullOrEmpty(name)) {
                         throw new ApplicationException("Unamed index entry found.");
                     }
                     // TODO : Account for sort order. 
-                    Console.WriteLine("RI name '{0}'", name);
+                    if (FeaturesContext.FindFileAlgorithmTrace) {
+                        Console.WriteLine("RI name '{0}'", name);
+                    }
                     switch (string.Compare(childName, name)) {
                         case -1:
                             indexAllocationVCN = scannedEntry->ChildNodeVCN;
-                            Console.WriteLine("Found");
+                            if (FeaturesContext.FindFileAlgorithmTrace) {
+                                Console.WriteLine("Found");
+                            }
                             return false;
                         case 0:
                             // Don't know yet how to retrieve an item that is located in teh index_root
                             // attribute.
                             throw new NotImplementedException();
                         case 1:
-                            Console.WriteLine("Continue");
+                            if (FeaturesContext.FindFileAlgorithmTrace) {
+                                Console.WriteLine("Continue");
+                            }
                             return true;
                         default:
                             throw new ApplicationException();
                     }
-                });
+                }, FeaturesContext.FindFileAlgorithmTrace);
                 if (ulong.MaxValue == indexAllocationVCN) {
                     return null;
                 }
@@ -316,7 +331,9 @@ namespace RawDiskReadPOC.NTFS
                 if (FeaturesContext.InvariantChecksEnabled) {
                     indexAllocationAttributeHeader->AssertNonResident();
                 }
-                indexAllocationAttributeHeader->Dump();
+                if (FeaturesContext.FindFileAlgorithmTrace) {
+                    indexAllocationAttributeHeader->Dump();
+                }
                 // Get attribute content and scaan 
                 using (IClusterStream dataStream = indexAllocationAttributeHeader->OpenDataClusterStream()) {
                     IPartitionClusterData rawData = null;
@@ -325,7 +342,9 @@ namespace RawDiskReadPOC.NTFS
                         if (null == rawData) {
                             throw new ApplicationException();
                         }
-                        DebugVCNCluster(rawData);
+                        if (FeaturesContext.FindFileAlgorithmTrace) {
+                            DebugVCNCluster(rawData);
+                        }
                     }
                     byte* rawPtr = rawData.Data;
                     NtfsRecord* record = (NtfsRecord*)rawPtr;
@@ -336,7 +355,9 @@ namespace RawDiskReadPOC.NTFS
                     NtfsNodeHeader* nodeHeader = (NtfsNodeHeader*)rawPtr;
                     byte* basePtr = (byte*)nodeHeader;
                     rawPtr += sizeof(NtfsNodeHeader);
-                    nodeHeader->Dump();
+                    if (FeaturesContext.FindFileAlgorithmTrace) {
+                        nodeHeader->Dump();
+                    }
                     for(uint currentOffset = nodeHeader->OffsetToFirstIndexEntry;
                         currentOffset < nodeHeader->OffsetToEndOfIndexEntries;
                         )
@@ -348,7 +369,9 @@ namespace RawDiskReadPOC.NTFS
                             return currentEntry;
                         }
                         currentOffset += currentEntry->EntryLength;
-                        Console.WriteLine(name);
+                        if (FeaturesContext.FindFileAlgorithmTrace) {
+                            Console.WriteLine(name);
+                        }
                     }
                     // Helpers.BinaryDump(rawData.Data, 256);
                     // Didn't found the expected record. Return a null reference.
@@ -401,15 +424,18 @@ namespace RawDiskReadPOC.NTFS
                 NtfsFileRecord* previousRecord = currentRecord;
                 try {
                     previousClusterData = clusterData;
-                    NtfsIndexEntry* result = _FindChildItem(previousRecord, pathItems[index], out clusterData);
-                    if (null == result) {
+                    NtfsIndexEntry* scannedEntry = _FindChildItem(previousRecord, pathItems[index], out clusterData);
+                    if (null == scannedEntry) {
                         // Some part of the path is missing.
                         return null;
                     }
                     if (index == leafItemIndex) {
-                        return result;
+                        return scannedEntry;
                     }
-                    throw new ApplicationException("UNREACHABLE");
+                    currentRecord = GetFileRecord(scannedEntry->FileReference, out clusterData);
+                    if (null == currentRecord) {
+                        throw new ApplicationException();
+                    }
                 }
                 finally {
                     if (null != previousClusterData) {
@@ -575,6 +601,22 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        internal unsafe void TraceMFT()
+        {
+            this.MFT.RecordBase->EnumerateRecordAttributes(
+                delegate (NtfsAttribute* attribute) {
+                    Console.WriteLine("{0} {1}",
+                        attribute->AttributeType, (0 == attribute->Nonresident) ? "Re" : "NR");
+                    if (0 != attribute->Nonresident)
+                    {
+                        NtfsNonResidentAttribute* nonResident = (NtfsNonResidentAttribute*)attribute;
+                        Console.WriteLine("\tA={0}, D={1}, I={2}", nonResident->AllocatedSize,
+                            nonResident->DataSize, nonResident->InitializedSize);
+                    }
+                    return true;
+                });
+        }
+
         internal unsafe void UpdateBadClustersMap()
         {
             byte* buffer = null;
@@ -636,10 +678,10 @@ namespace RawDiskReadPOC.NTFS
         {
             NtfsNonResidentAttribute* dataAttribute =
                 (NtfsNonResidentAttribute*)_mft.RecordBase->GetAttribute(NtfsAttributeType.AttributeData);
-            dataAttribute->AssertNonResident();
             if (null == dataAttribute) {
                 throw new ApplicationException();
             }
+            dataAttribute->AssertNonResident();
             ulong clusterSize = this.ClusterSize;
             ulong mftRecordPerCluster = clusterSize / this.MFTEntrySize;
             ulong sectorsPerMFTRecord = this.MFTEntrySize / this.BytesPerSector;

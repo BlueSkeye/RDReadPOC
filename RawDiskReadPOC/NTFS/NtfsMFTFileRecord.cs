@@ -76,10 +76,10 @@ namespace RawDiskReadPOC.NTFS
         {
             NtfsNonResidentAttribute* dataAttribute =
                 (NtfsNonResidentAttribute*)RecordBase->GetAttribute(NtfsAttributeType.AttributeData);
-            dataAttribute->AssertNonResident();
             if (null == dataAttribute) {
                 throw new ApplicationException();
             }
+            dataAttribute->AssertNonResident();
             NtfsPartition partition = NtfsPartition.Current;
             ulong clusterSize = partition.ClusterSize;
             ulong mftRecordPerCluster = clusterSize / partition.MFTEntrySize;

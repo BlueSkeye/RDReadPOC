@@ -7,9 +7,14 @@ namespace RawDiskReadPOC.NTFS
     /// <remarks>Size is 0x18/24 bytes = 16 + 8</remarks>
     internal struct NtfsResidentAttribute
     {
+        internal bool IsResident
+        {
+            get { return Header.IsResident; }
+        }
+
         internal void AssertResident()
         {
-            if (0 != Header.Nonresident) {
+            if (!IsResident) {
                 throw new AssertionException("Non resident attribute found which was expected to be resident.");
             }
         }

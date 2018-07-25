@@ -7,6 +7,11 @@ namespace RawDiskReadPOC.NTFS
     /// <remarks>Size is 0x10/16 bytes.</remarks>
     internal struct NtfsAttribute
     {
+        internal bool IsResident
+        {
+            get { return (0 == Nonresident); }
+        }
+
         /// <summary>Returns attribute name or a null reference if the name is undefined.</summary>
         internal unsafe string Name
         {

@@ -1,6 +1,7 @@
 ﻿Conditional compilation symbols
 CHK_DATAPOOL : Check data pool allocation and deallocation.
 CHK_INVARIANTS : Check invariants.
+TRC_FINDFILE : Trace operations for FindFile. (switchable at runtime)
 
 Ideas
 - Implement asynchronous I/O. Extended parameters are required.
