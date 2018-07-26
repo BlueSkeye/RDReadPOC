@@ -162,6 +162,56 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        /// <summary>Dump the content of the $BadClus file.</summary>
+        internal unsafe void DumpBadClusters()
+        {
+            ulong currentRecordLBA =
+                _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.BadClusters];
+            NtfsFileRecord* header = null;
+            uint readOpCount = 0;
+            IPartitionClusterData clusterData = null;
+            try {
+                clusterData = ReadSectors(currentRecordLBA, SectorsPerCluster);
+                NtfsFileRecord* fileRecord = (NtfsFileRecord*)(clusterData.Data);
+                fileRecord->AssertRecordType();
+                NtfsFileNameAttribute* fileName =
+                    (NtfsFileNameAttribute*)(fileRecord->GetAttribute(NtfsAttributeType.AttributeFileName));
+                if (null == fileName) {
+                    throw new ApplicationException();
+                }
+                if ("$BadClus" != fileName->GetName()) {
+                    throw new ApplicationException();
+                }
+                // First $DATA attribute is expected to be empty.
+                NtfsAttribute* dataAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData, 1);
+                if (null == dataAttribute) {
+                    throw new ApplicationException();
+                }
+                if (0 != dataAttribute->Length) {
+                    throw new ApplicationException();
+                }
+                // Second $DATA attribute is the real data.
+                dataAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData, 2);
+                if (null == dataAttribute) {
+                    throw new ApplicationException();
+                }
+                // It must be non-resident.
+                if (dataAttribute->IsResident) {
+                    throw new NotSupportedException();
+                }
+                NtfsNonResidentAttribute* nrDataAttribute = (NtfsNonResidentAttribute*)dataAttribute;
+                using (IClusterStream stream = nrDataAttribute->OpenDataClusterStream()) {
+                    throw new NotImplementedException();
+                }
+
+            }
+            finally {
+                if (null != clusterData) {
+                    clusterData.Dispose();
+                }
+            }
+        }
+
         internal unsafe void DumpFirstFileNames()
         {
             // Start at $MFT LBA.

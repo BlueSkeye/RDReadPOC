@@ -23,7 +23,7 @@ namespace RawDiskReadPOC.NTFS
 
         internal unsafe NtfsFileRecord* RecordBase
         {
-            get { return (NtfsFileRecord*)_localBuffer; }
+            get { return _localBuffer; }
         }
 
         internal static unsafe void AssertMFTRecordCachingInvariance(PartitionManager manager)

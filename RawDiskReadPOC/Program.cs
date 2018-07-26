@@ -24,6 +24,18 @@ namespace RawDiskReadPOC
             throw new NotImplementedException();
         }
 
+        private static void InstallExceptionHandlers()
+        {
+            AppDomain.CurrentDomain.FirstChanceException += delegate (object sender, FirstChanceExceptionEventArgs e) {
+                Exception ex = e.Exception;
+                return;
+            };
+            AppDomain.CurrentDomain.UnhandledException += delegate (object sender, UnhandledExceptionEventArgs e) {
+                Exception ex = e.ExceptionObject as Exception;
+                return;
+            };
+        }
+
         private static unsafe void InterpretActivePartitions()
         {
             byte* sector = null;
@@ -47,15 +59,7 @@ namespace RawDiskReadPOC
 
         public static unsafe int Main(string[] args)
         {
-            // TODO : Configure TrackedPartitionIndex from command line arguments.
-            AppDomain.CurrentDomain.FirstChanceException += delegate (object sender, FirstChanceExceptionEventArgs e) {
-                Exception ex = e.Exception;
-                return;
-            };
-            AppDomain.CurrentDomain.UnhandledException += delegate (object sender, UnhandledExceptionEventArgs e) {
-                Exception ex = e.ExceptionObject as Exception;
-                return;
-            };
+            InstallExceptionHandlers();
             DisplayVersion();
 
             IntPtr handle = IntPtr.Zero;
@@ -77,10 +81,10 @@ namespace RawDiskReadPOC
                 if (FeaturesContext.InvariantChecksEnabled) {
                     NtfsMFTFileRecord.AssertMFTRecordCachingInvariance(_partitionManager);
                 }
+                // TODO : Configure TrackedPartitionIndex from command line arguments.
                 foreach (GenericPartition partition in _partitionManager.EnumeratePartitions()) {
                     if (!partition.ShouldCapture) { continue; }
                     NtfsPartition ntfsPartition = partition as NtfsPartition;
-                    // ntfsPartition.TraceMFT();
                     NtfsPartition.Current = ntfsPartition;
 
                     // Basic functionnality tests. Don't remove.
@@ -100,14 +104,15 @@ namespace RawDiskReadPOC
                     if ((null == fileRecord) || (null == fileData)) {
                         throw new ApplicationException();
                     }
-                    fileRecord->BinaryDumpContent();
                     try {
+                        // For debugging purpose.
+                        // fileRecord->BinaryDumpContent();
+
                         // TODO : Do something with the file.
                     }
                     finally {
                         if (null != fileData) { fileData.Dispose(); }
                     }
-                    throw new NotImplementedException();
                 }
                 return 0;
             }
