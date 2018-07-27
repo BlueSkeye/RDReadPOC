@@ -92,6 +92,9 @@ namespace RawDiskReadPOC
                     //ntfsPartition.MonitorBadClusters();
                     //ntfsPartition.ReadBitmap();
 
+                    // Dump bad clusters.
+                    ntfsPartition.DumpBadClusters();
+
                     // Locate file.
                     string fileName = @"TEMP\AsciiTes.txt";
                     NtfsIndexEntry* fileDescriptor = ntfsPartition.FindFile(fileName);

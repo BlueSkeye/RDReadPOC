@@ -87,6 +87,17 @@ namespace RawDiskReadPOC
             return Encoding.Unicode.GetString(buffer, sizeof(uint));
         }
 
+        internal static unsafe void Zeroize(byte* data, uint size)
+        {
+            ulong* target = (ulong*)data;
+            for (; size >= sizeof(ulong); size -= sizeof(ulong)) {
+                (*(target++)) = 0;
+            }
+            while (0 < size--) {
+                *(target++) = 0;
+            }
+        }
+
         internal static unsafe byte* DumpedAddress;
         private static readonly DateTime Epoch = new DateTime(1601, 1, 1);
         private static string[] _Indentations;

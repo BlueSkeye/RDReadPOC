@@ -15,7 +15,7 @@ namespace RawDiskReadPOC.NTFS
         internal void AssertRecordType()
         {
             if (Constants.FileRecordMarker != Ntfs.Type) {
-                throw new AssertionException("Reacord type mismatch. Expected a FILE record.");
+                throw new AssertionException("Record type mismatch. Expected a FILE record.");
             }
         }
 

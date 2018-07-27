@@ -141,6 +141,12 @@ namespace RawDiskReadPOC
                     }
                 }
 
+                public unsafe IPartitionClusterData Zeroize()
+                {
+                    Helpers.Zeroize(_nativeData, AllocationChunkSize);
+                    return this;
+                }
+
                 private const int AllocationChunkSize = 1024;
                 private unsafe byte* _nativeData;
             }

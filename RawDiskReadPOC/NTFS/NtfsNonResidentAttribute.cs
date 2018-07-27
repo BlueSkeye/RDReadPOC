@@ -37,42 +37,49 @@ namespace RawDiskReadPOC.NTFS
             // TODO : Data runs may change over time when file is modified. How can we detect this
             // and reuse the already decoded array if we are sure the file is untouched since last
             // decoding ?
+            // Also note that there is a small chance the fidsk layout will change between the time
+            // we read the chunk list and the time we use it in a data stream for example. This may
+            // lead to discrepency or crashes.
             List<LogicalChunk> chunks = new List<LogicalChunk>();
             fixed (NtfsNonResidentAttribute* pAttribute = &this) {
-                ulong previousRunLCN = 0;
+                ulong previousNonSparseRunLCN = 0;
                 byte* pDecoded = ((byte*)pAttribute) + pAttribute->RunArrayOffset;
                 while (true) {
                     byte headerByte = *(pDecoded++);
                     if (0 == headerByte) { break; }
                     byte runLengthBytesCount = (byte)(headerByte & 0x0F);
                     byte runOffsetBytesCount = (byte)((headerByte & 0xF0) >> 4);
-                    if (runOffsetBytesCount > sizeof(ulong)) { throw new NotSupportedException(); }
-                    ulong thisRunLCN = 0;
-                    ulong rawValue = *((ulong*)pDecoded);
-                    ulong thisRunLength = rawValue & (ulong)((1 << (8 * runLengthBytesCount)) - 1);
-                    int shifting = ((sizeof(ulong) - (runOffsetBytesCount + runLengthBytesCount))) * 8;
-                    ulong captured = rawValue << shifting;
-                    long relativeOffset = ((long)captured >> (shifting + (8 * runLengthBytesCount)));
-                    pDecoded += runOffsetBytesCount + runLengthBytesCount;
-
-                    if (long.MaxValue < previousRunLCN) {
+                    bool isSparse = false;
+                    ulong thisRunLCN;
+                    if (sizeof(ulong) < (runOffsetBytesCount + runLengthBytesCount )) {
                         throw new NotSupportedException();
                     }
-                    long candidateRunLCN = (long)previousRunLCN + relativeOffset;
-                    if (0 > candidateRunLCN) {
-                        throw new ApplicationException();
+                    ulong rawValue = *((ulong*)pDecoded);
+                    ulong thisRunLength = rawValue & ((1UL << (8 * runLengthBytesCount)) - 1);
+                    if (0 == runOffsetBytesCount) {
+                        isSparse = true;
+                        thisRunLCN = ulong.MaxValue;
                     }
-                    thisRunLCN = (ulong)candidateRunLCN;
-
-                    if (0 == thisRunLCN) {
-                        // Sparse run.
-                        throw new NotImplementedException();
+                    else {
+                        int shifting = ((sizeof(ulong) - (runOffsetBytesCount + runLengthBytesCount))) * 8;
+                        ulong captured = rawValue << shifting;
+                        long relativeOffset = ((long)captured >> (shifting + (8 * runLengthBytesCount)));
+                        if (long.MaxValue < previousNonSparseRunLCN) {
+                            throw new NotSupportedException();
+                        }
+                        thisRunLCN = (ulong)((long)previousNonSparseRunLCN + relativeOffset);
+                        if (0 > thisRunLCN) {
+                            throw new ApplicationException();
+                        }
                     }
-                    chunks.Add(new LogicalChunk() {
+                    pDecoded += runOffsetBytesCount + runLengthBytesCount;
+                    chunks.Add(new LogicalChunk(isSparse) {
                         ClustersCount = thisRunLength,
                         FirstLogicalClusterNumber = thisRunLCN
                     });
-                    previousRunLCN = thisRunLCN;
+                    if (!isSparse) {
+                        previousNonSparseRunLCN = thisRunLCN;
+                    }
                 }
                 if (FeaturesContext.InvariantChecksEnabled) {
                     if (this.HighVcn < this.LowVcn) {
@@ -159,12 +166,19 @@ namespace RawDiskReadPOC.NTFS
 
         internal class LogicalChunk
         {
+            internal LogicalChunk(bool isSparse)
+            {
+                IsSparse = isSparse;
+            }
+
             internal ulong ClustersCount;
             internal ulong FirstLogicalClusterNumber;
+            internal bool IsSparse;
 
             public override string ToString()
             {
-                return string.Format("L={0} LCN={1:X8}", ClustersCount, FirstLogicalClusterNumber);
+                return string.Format("L={0} LCN={1:X8}{2}",
+                    ClustersCount, FirstLogicalClusterNumber, IsSparse ? " (S)" : string.Empty);
             }
         }
 
@@ -181,7 +195,7 @@ namespace RawDiskReadPOC.NTFS
                 BUFFER_SIZE = (int)(MAX_READ_SECTORS * _partition.BytesPerSector);
                 // Compute length.
                 _length = 0;
-                foreach(LogicalChunk scannedChunk in chunks) {
+                foreach (LogicalChunk scannedChunk in chunks) {
                     _length += (long)(scannedChunk.ClustersCount * _clusterSize);
                 }
                 _clusterStreamBehavior = clusterStreamBehavior;
@@ -261,6 +275,14 @@ namespace RawDiskReadPOC.NTFS
                     _currentChunkRemainingBytesCount = _clusterSize * _currentChunk.ClustersCount;
                     readFromCluster = _currentChunk.FirstLogicalClusterNumber;
                 }
+                if (FeaturesContext.InvariantChecksEnabled) {
+                    if (null == _currentChunk) {
+                        throw new ApplicationException();
+                    }
+                    if (_currentChunkClusterIndex >= _currentChunk.ClustersCount) {
+                        throw new ApplicationException();
+                    }
+                }
                 ulong remainingClustersInChunk = _currentChunk.ClustersCount - _currentChunkClusterIndex;
                 remainingSectorsInChunk = remainingClustersInChunk * sectorsPerCluster;
 
@@ -278,7 +300,9 @@ namespace RawDiskReadPOC.NTFS
                 }
                 // Perform read and reinitialize some internal values.
                 ulong readFromSector = readFromCluster * sectorsPerCluster;
-                _clusterData = _partition.ReadSectors(readFromSector, readSectorsCount);
+                _clusterData = (_currentChunk.IsSparse)
+                    ? _partition.ReadSparseSectors(readSectorsCount)
+                    : _partition.ReadSectors(readFromSector, readSectorsCount);
                 if (null == _clusterData) {
                     throw new ApplicationException();
                 }
@@ -291,49 +315,6 @@ namespace RawDiskReadPOC.NTFS
                 }
                 return (int)_clusterData.DataSize;
             }
-
-            // Preserved during debugging.
-            //uint sectorsPerCluster = _partition.SectorsPerCluster;
-            //ulong readFromCluster;
-            //uint readSectorsCount;
-            //ulong remainingSectorsInChunk;
-
-            //if ((null != _currentChunk) && (_currentChunkClusterIndex < _currentChunk.ClustersCount)) {
-            //    // Some clusters remaining in current chunk.
-            //    readFromCluster = _currentChunkClusterIndex + _currentChunk.FirstLogicalClusterNumber;
-            //}
-            //else {
-            //    // Need to go on with next chunk.
-            //    if (!_chunkEnumerator.MoveNext()) {
-            //        // No more data available from the partition.
-            //        return result;
-            //    }
-            //    _currentChunk = _chunkEnumerator.Current;
-            //    _currentChunkClusterIndex = 0;
-            //    _currentChunkRemainingBytesCount = _clusterSize * _currentChunk.ClustersCount;
-            //    readFromCluster = _currentChunk.FirstLogicalClusterNumber;
-            //}
-            //ulong remainingClustersInChunk = _currentChunk.ClustersCount - _currentChunkClusterIndex;
-            //remainingSectorsInChunk = remainingClustersInChunk * sectorsPerCluster;
-
-            //// How many blocks should we read ?
-            //readSectorsCount = (uint)MAX_READ_SECTORS;
-            //if (readSectorsCount > remainingSectorsInChunk) {
-            //    readSectorsCount = (uint)remainingSectorsInChunk;
-            //}
-            //if (FeaturesContext.InvariantChecksEnabled) {
-            //    if (0 != (readSectorsCount % sectorsPerCluster)) {
-            //        throw new ApplicationException();
-            //    }
-            //}
-            //// Perform read and reinitialize some internal values.
-            //ulong readFromSector = readFromCluster * sectorsPerCluster;
-            //_clusterData = _partition.ReadSectors(readFromSector, readSectorsCount);
-            //if (null == _clusterData) {
-            //    throw new ApplicationException();
-            //}
-            //_clusterDataPosition = 0;
-            //_currentChunkClusterIndex += (readSectorsCount / sectorsPerCluster);
 
             public override unsafe int Read(byte[] buffer, int offset, int count)
             {
@@ -418,6 +399,54 @@ namespace RawDiskReadPOC.NTFS
                 }
                 _position = long.MaxValue;
                 return long.MaxValue;
+            }
+
+            /// <summary>Only meaningfull for non resident sparse data attribute.</summary>
+            void IClusterStream.SeekToNextNonEmptyCluster()
+            {
+                if (!_clusterStreamBehavior) {
+                    throw new NotSupportedException("Not a cluster stream.");
+                }
+                if ((null != _currentChunk) && _currentChunk.IsSparse) {
+                    _currentChunk = null;
+                }
+                while (true) {
+                    if (null != _currentChunk) {
+                        if (_currentChunk.IsSparse) {
+                            _currentChunk = null;
+                        }
+                        else {
+                            if (_currentChunkClusterIndex < _currentChunk.ClustersCount) {
+                                // Some clusters remaining in current chunk.
+                                break;
+                            }
+                        }
+                    }
+                    // Need to go on with next chunk.
+                    if (!_chunkEnumerator.MoveNext()) {
+                        // No more data available from the partition.
+                        _currentChunk = null;
+                        return;
+                    }
+                    _currentChunk = _chunkEnumerator.Current;
+                    if (!_currentChunk.IsSparse) {
+                        _currentChunkClusterIndex = 0;
+                        _currentChunkRemainingBytesCount = _clusterSize * _currentChunk.ClustersCount;
+                        ulong seekTo = (_currentChunk.ClustersCount * _partition.SectorsPerCluster * _partition.BytesPerSector);
+                        if (long.MaxValue < seekTo) {
+                            throw new NotImplementedException();
+                        }
+                        _position += (long)seekTo;
+                        return;
+                    }
+                    else {
+                        ulong moveCount = _currentChunk.ClustersCount * _partition.SectorsPerCluster * _partition.BytesPerSector;
+                        if (long.MaxValue < moveCount) {
+                            throw new ApplicationException();
+                        }
+                        _position += (long)moveCount;
+                    }
+                }
             }
 
             public override void SetLength(long value)

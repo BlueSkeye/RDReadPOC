@@ -77,7 +77,7 @@ namespace RawDiskReadPOC
         }
 
         protected abstract IPartitionClusterData GetClusterBufferChain(uint size = 0);
-
+        
         /// <summary>Read a some number of sectors.</summary>
         /// <param name="logicalSectorId">Logical identifier of the first sector to be read.</param>
         /// <param name="sectorsCount">Number of sectors to read.</param>
@@ -133,6 +133,11 @@ namespace RawDiskReadPOC
                 }
                 throw;
             }
+        }
+
+        internal unsafe IPartitionClusterData ReadSparseSectors(uint sectorsCount)
+        {
+            return GetClusterBufferChain(sectorsCount * BytesPerSector).Zeroize();
         }
 
         internal unsafe void SeekToSector(ulong logicalSectorNumber)

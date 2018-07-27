@@ -179,17 +179,14 @@ namespace RawDiskReadPOC.NTFS
                 if (null == fileName) {
                     throw new ApplicationException();
                 }
-                if ("$BadClus" != fileName->GetName()) {
-                    throw new ApplicationException();
-                }
                 // First $DATA attribute is expected to be empty.
                 NtfsAttribute* dataAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData, 1);
                 if (null == dataAttribute) {
                     throw new ApplicationException();
                 }
-                if (0 != dataAttribute->Length) {
-                    throw new ApplicationException();
-                }
+                // TODO : Understand what this data attribute is for.
+                // dataAttribute->BinaryDump();
+
                 // Second $DATA attribute is the real data.
                 dataAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData, 2);
                 if (null == dataAttribute) {
@@ -199,11 +196,30 @@ namespace RawDiskReadPOC.NTFS
                 if (dataAttribute->IsResident) {
                     throw new NotSupportedException();
                 }
-                NtfsNonResidentAttribute* nrDataAttribute = (NtfsNonResidentAttribute*)dataAttribute;
-                using (IClusterStream stream = nrDataAttribute->OpenDataClusterStream()) {
-                    throw new NotImplementedException();
-                }
 
+                // TODO : Are we sure the $Bad data attribute is always the second one ?
+                NtfsNonResidentAttribute* nrDataAttribute = (NtfsNonResidentAttribute*)dataAttribute;
+                string name = nrDataAttribute->Header.Name;
+                if ("$Bad" != name) {
+                    throw new ApplicationException();
+                }
+                bool badClusterFound = false;
+                using (IClusterStream stream = nrDataAttribute->OpenDataClusterStream()) {
+                    while(true) {
+                        stream.SeekToNextNonEmptyCluster();
+                        long position = ((Stream)stream).Position;
+                        using (IPartitionClusterData badClusterData = stream.ReadNextCluster()) {
+                            if (null == badClusterData) { break; }
+                            badClusterFound = true;
+                            Console.WriteLine("Bad cluster #{0}",
+                                (position / (BytesPerSector * SectorsPerCluster)));
+                        }
+                    }
+                }
+                if (!badClusterFound) {
+                    Console.WriteLine("No bad cluster found.");
+                }
+                return;
             }
             finally {
                 if (null != clusterData) {
@@ -878,6 +894,12 @@ namespace RawDiskReadPOC.NTFS
                         disposed._rawData = null;
                     }
                 }
+            }
+
+            public unsafe IPartitionClusterData Zeroize()
+            {
+                Helpers.Zeroize(_rawData, _dataSize);
+                return this;
             }
 
             internal uint _dataSize;

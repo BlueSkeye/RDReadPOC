@@ -10,5 +10,6 @@ namespace RawDiskReadPOC
 
         void BinaryDump();
         void BinaryDumpChain();
+        IPartitionClusterData Zeroize();
     }
 }
