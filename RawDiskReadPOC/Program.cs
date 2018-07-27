@@ -94,9 +94,16 @@ namespace RawDiskReadPOC
 
                     // Dump bad clusters.
                     ntfsPartition.DumpBadClusters();
+                    
+                    // Dump UsnJournal
+                    new NtfsUsnJournalReader(ntfsPartition).Run();
+                    
+                    // Dump LogFile
+                    // new NtfsLogFileReader(ntfsPartition).Run();
 
                     // Locate file.
-                    string fileName = @"TEMP\AsciiTes.txt";
+                    // string fileName = @"TEMP\AsciiTes.txt";
+                    string fileName = @"$Extend\$UsnJrnl";
                     NtfsIndexEntry* fileDescriptor = ntfsPartition.FindFile(fileName);
                     if (null == fileDescriptor) {
                         throw new System.IO.FileNotFoundException(fileName);

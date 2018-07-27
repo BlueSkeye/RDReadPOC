@@ -62,6 +62,15 @@ namespace RawDiskReadPOC.NTFS
                 BaseFileRecord, NextAttributeNumber);
         }
 
+        internal unsafe void DumpAttributes(bool binaryDump = false)
+        {
+            EnumerateRecordAttributes(delegate(NtfsAttribute* attribute) {
+                if (binaryDump) { attribute->BinaryDump(); }
+                else { attribute->Dump(); }
+                return true;
+            });
+        }
+
         internal unsafe void EnumerateRecordAttributes(NtfsPartition owner, ulong recordLBA,
             ref byte* buffer, RecordAttributeEnumeratorCallbackDelegate callback)
         {
@@ -88,12 +97,29 @@ namespace RawDiskReadPOC.NTFS
         {
             // Walk attributes, seeking for the searched one.
             NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
+            NtfsAttributeListAttribute* pendingAttributeList = null;
             for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
                 if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
                 if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
                 if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
-                if (!callback(currentAttribute)) { return; }
+                // If we found an AttributeListAttribute, we must go one level deeper to
+                // complete the enumeration.
+                if (NtfsAttributeType.AttributeAttributeList == currentAttribute->AttributeType) {
+                    if (null != pendingAttributeList) {
+                        throw new ApplicationException();
+                    }
+                    // Defer handling
+                    pendingAttributeList = (NtfsAttributeListAttribute*)currentAttribute;
+                }
+                else {
+                    if (!callback(currentAttribute)) { return; }
+                }
                 currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
+            }
+            if (null != pendingAttributeList) {
+                pendingAttributeList->BinaryDump();
+                pendingAttributeList->Dump();
+                throw new NotImplementedException();
             }
             return;
         }

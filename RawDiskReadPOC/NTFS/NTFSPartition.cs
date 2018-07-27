@@ -316,9 +316,9 @@ namespace RawDiskReadPOC.NTFS
         }
 
         /// <summary> Find the <see cref="NtfsRecord"/> matching the given path items.</summary>
-        /// <param name="childName">Searched item name.</param>
+        /// <param name="searchedName">Searched item name.</param>
         /// <returns></returns>
-        private unsafe NtfsIndexEntry* _FindChildItem(NtfsFileRecord* fromRecord, string childName,
+        private unsafe NtfsIndexEntry* _FindChildItem(NtfsFileRecord* fromRecord, string searchedName,
             out IPartitionClusterData clusterData)
         {
             if (FeaturesContext.FindFileAlgorithmTrace) {
@@ -347,21 +347,22 @@ namespace RawDiskReadPOC.NTFS
                     rootIndexAttribute->Dump();
                 }
                 ulong indexAllocationVCN = ulong.MaxValue;
+                NtfsIndexEntry* match = null;
                 rootIndexAttribute->EnumerateIndexEntries(delegate (NtfsDirectoryIndexEntry* scannedEntry) {
-                    string name = scannedEntry->Name;
+                    string candidateName = scannedEntry->Name;
                     bool lastEntry = scannedEntry->GenericEntry.LastIndexEntry;
                     if (lastEntry) {
                         indexAllocationVCN = scannedEntry->ChildNodeVCN;
                         return false;
                     }
-                    if (string.IsNullOrEmpty(name)) {
+                    if (string.IsNullOrEmpty(candidateName)) {
                         throw new ApplicationException("Unamed index entry found.");
                     }
                     // TODO : Account for sort order. 
                     if (FeaturesContext.FindFileAlgorithmTrace) {
-                        Console.WriteLine("RI name '{0}'", name);
+                        Console.WriteLine("RI name '{0}'", candidateName);
                     }
-                    switch (string.Compare(childName, name)) {
+                    switch (string.Compare(searchedName, candidateName)) {
                         case -1:
                             indexAllocationVCN = scannedEntry->ChildNodeVCN;
                             if (FeaturesContext.FindFileAlgorithmTrace) {
@@ -369,9 +370,8 @@ namespace RawDiskReadPOC.NTFS
                             }
                             return false;
                         case 0:
-                            // Don't know yet how to retrieve an item that is located in teh index_root
-                            // attribute.
-                            throw new NotImplementedException();
+                            match = (NtfsIndexEntry*)scannedEntry;
+                            return false;
                         case 1:
                             if (FeaturesContext.FindFileAlgorithmTrace) {
                                 Console.WriteLine("Continue");
@@ -381,6 +381,10 @@ namespace RawDiskReadPOC.NTFS
                             throw new ApplicationException();
                     }
                 }, FeaturesContext.FindFileAlgorithmTrace);
+                if (null != match) {
+                    // An exact match was found. No need to dive further down the tree.
+                    return match;
+                }
                 if (ulong.MaxValue == indexAllocationVCN) {
                     return null;
                 }
@@ -431,7 +435,7 @@ namespace RawDiskReadPOC.NTFS
                         NtfsIndexEntry* currentEntry = (NtfsIndexEntry*)(basePtr + currentOffset);
                         NtfsFileNameAttribute* fileName = (NtfsFileNameAttribute*)(basePtr + currentOffset + sizeof(NtfsIndexEntry));
                         string name = fileName->GetName();
-                        if (childName == name) {
+                        if (searchedName == name) {
                             return currentEntry;
                         }
                         currentOffset += currentEntry->EntryLength;
@@ -535,6 +539,29 @@ namespace RawDiskReadPOC.NTFS
             return _PartitionClusterData.CreateFromPool(unitSize, unitsCount, nonPooled);
         }
 
+        /// <summary>Returns a file record for one of the well known files or a null reference.
+        /// On return fixups are already applied.</summary>
+        /// <param name="wellKnownFile"></param>
+        /// <param name="data"></param>
+        /// <returns></returns>
+        internal unsafe NtfsFileRecord* GetFileRecord(NtfsWellKnownMetadataFiles wellKnownFile,
+            out IPartitionClusterData data)
+        {
+            ulong recordIndex = _metadataFileLBAs[(int)wellKnownFile];
+            data = GetCluster(recordIndex / SectorsPerCluster);
+            if (null == data) {
+                return null;
+            }
+            NtfsFileRecord* result = (NtfsFileRecord*)data.Data;
+            result->ApplyFixups();
+            return result;
+        }
+
+        /// <summary>
+        /// On return fixups are already applied.</summary>
+        /// <param name="referenceNumber"></param>
+        /// <param name="data"></param>
+        /// <returns></returns>
         internal unsafe NtfsFileRecord* GetFileRecord(ulong referenceNumber, out IPartitionClusterData data)
         {
             ulong offset = (referenceNumber >> 48);
@@ -544,7 +571,9 @@ namespace RawDiskReadPOC.NTFS
             relativeCluster = VCNtoLCN(relativeCluster);
             ulong clusterOffset = (recordIndex % recordsPerCluster) * 1024;
             data = GetCluster(relativeCluster);
-            return (NtfsFileRecord*)(data.Data + clusterOffset);
+            NtfsFileRecord* result = (NtfsFileRecord*)(data.Data + clusterOffset);
+            result->ApplyFixups();
+            return result;
         }
 
         internal unsafe void InterpretBootSector()

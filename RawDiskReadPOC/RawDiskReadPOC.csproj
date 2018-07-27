@@ -60,6 +60,7 @@
     <Compile Include="Natives.cs" />
     <Compile Include="NTFS\NtfsIndexEntry.cs" />
     <Compile Include="NTFS\NtfsIndexEntryHandlerDelegate.cs" />
+    <Compile Include="NTFS\NtfsLogFileReader.cs" />
     <Compile Include="NTFS\NtfsLoggedUtilyStreamAttribute.cs" />
     <Compile Include="NTFS\NtfsNodeHeader.cs" />
     <Compile Include="NTFS\NtfsPartition.cs" />
@@ -82,6 +83,7 @@
     <Compile Include="NTFS\NtfsRootIndexAttribute.cs" />
     <Compile Include="NTFS\NtfsSecurityDescriptorAttribute.cs" />
     <Compile Include="NTFS\NtfsStandardInformationAttribute.cs" />
+    <Compile Include="NTFS\NtfsUsnJournalReader.cs" />
     <Compile Include="NTFS\NtfsVolumeInformationAttribute.cs" />
     <Compile Include="NTFS\NtfsWellKnownMetadataFiles.cs" />
     <Compile Include="NTFS\ObjectIdAttribute.cs" />

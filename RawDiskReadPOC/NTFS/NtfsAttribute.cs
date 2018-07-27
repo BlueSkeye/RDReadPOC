@@ -83,7 +83,7 @@ namespace RawDiskReadPOC.NTFS
 
         private void _Dump()
         {
-            Console.WriteLine("Typ {0}, L={1}, {2}, Flg 0x{3:X4}, Att# {4} ({5})",
+            Console.WriteLine("T:{0}, L={1}, {2}, Flg 0x{3:X4}, Att# {4} ({5})",
                 AttributeType, Length, (0 == Nonresident) ? "Re" : "NR", Flags,
                 AttributeNumber, Name ?? "UNNAMED");
         }

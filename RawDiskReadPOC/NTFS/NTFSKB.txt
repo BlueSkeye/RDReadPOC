@@ -10,6 +10,13 @@ https://www.writeblocked.org/resources/NTFS_CHEAT_SHEETS.pdf
 http://ultradefrag.sourceforge.net/doc/man/ntfs/NTFS_On_Disk_Structure.pdf
 https://www.dfir.training/windows/mft/338-62-mft-layout/file
 
+Attribute List
+http://forensic-proof.com/wp-content/uploads/2010/10/FP_NTFS_Forensic_Analysis.pdf
+
+$UsnJrnl
+http://docplayer.net/19759108-Forensic-insight-digital-forensics-community-in-korea-ntfs-log-tracker-blueangel-blueangel1275-gmail-com-forensic-note-blogspot-kr.html
+Record format : http://msdn.microsoft.com/en-us/library/aa365722.aspx
+
 MFT Size
 ========
 First MFT cluster number is defined in the boot sector. The $MFT record itself is the first
@@ -356,7 +363,7 @@ Filler : 00 00 00
 1D0 (464) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
 1E0 (480) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
 1F0 (496) : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-Typ AttributeIndexRoot, L=88, Re, Flg 0x0000, Att# 6 ($I38)
+T:AttributeIndexRoot, L=88, Re, Flg 0x0000, Att# 6 ($I38)
 VL 56, VO 0x0020, Flg 0
 Type I$, Coll 83, BPIB 48, CPIB 1
         1st off 4096, TotL 1, Allo 16, 40
@@ -400,7 +407,7 @@ Fixup : 0038 => 0030, 0000, 0000
 Seq 5, #lnk 1, aOff 56, flg 3, usd 800, all 1024, bfr 0, nxA 10
 
 038 (056) : 10 00 00 00 48 00 00 00 00 00 18 00 00 00 00 00
-Typ AttributeStandardInformation, L=72, Re, Flg 0x0000, Att# 0 (UNNAMED)
+T:AttributeStandardInformation, L=72, Re, Flg 0x0000, Att# 0 (UNNAMED)
 VL 48, VO 0x0018, Flg 0
 048 (072) : 30 00 00 00 18 00 00 00
 		050 (080) : 93 64 8D 9C 4E D9 D0 01 0A 83 9C 3C 43 03 D4 01
@@ -414,7 +421,7 @@ VL 48, VO 0x0018, Flg 0
         Maxv 0, V# 0, Clsid 0
         Qid 48, Secid 96, Qch 281474978283520, Usn Ox1001800000044
 
-Typ AttributeFileName, L=96, Re, Flg 0x0000, Att# 1 (UNNAMED)
+T:AttributeFileName, L=96, Re, Flg 0x0000, Att# 1 (UNNAMED)
 VL 68, VO 0x0018, Flg 1
         RefNum 0x5000000000005
         CR 130843320850932883 (2015-08-18 00:41:25)
@@ -424,24 +431,24 @@ VL 68, VO 0x0018, Flg 1
         Alloc 0, Size 0
         Attr 268435462 : Hidden, System
         NL 1, Ty 3 (.)
-Typ AttributeSecurityDescriptor, L=256, Re, Flg 0x0000, Att# 2 (UNNAMED)
+T:AttributeSecurityDescriptor, L=256, Re, Flg 0x0000, Att# 2 (UNNAMED)
 VL 228, VO 0x0018, Flg 0
         TODO dump content
-Typ AttributeIndexRoot, L=88, Re, Flg 0x0000, Att# 6 ($I38)
+T:AttributeIndexRoot, L=88, Re, Flg 0x0000, Att# 6 ($I38)
 VL 56, VO 0x0020, Flg 0
         Type I$, Coll 83, BPIB 48, CPIB 1
                 1st off 4096, TotL 1, Allo 16, 40
         TODO dump content
-Typ AttributeIndexAllocation, L=80, NR, Flg 0x0000, Att# 8 ($I30)
+T:AttributeIndexAllocation, L=80, NR, Flg 0x0000, Att# 8 ($I30)
         VCN 0x00000000-0x00000000, ROff 72, CU 0
         Asize 0x00001000, Dsize 0x00001000
         Isize 0x00001000, Csize 0x30003300490024
         BVcn 0x002A0111
         Eoff 176, IBL 40, Asize 1573888, FL 458752
-Typ AttributeBitmap, L=40, Re, Flg 0x0000, Att# 7 ($I30)
+T:AttributeBitmap, L=40, Re, Flg 0x0000, Att# 7 ($I30)
 VL 8, VO 0x0020, Flg 0
         01 00 00 00 00 00 00 00
-Typ AttributeLoggedUtilityStream, L=104, Re, Flg 0x0000, Att# 9 ($TXF_DATA)
+T:AttributeLoggedUtilityStream, L=104, Re, Flg 0x0000, Att# 9 ($TXF_DATA)
 VL 56, VO 0x0030, Flg 0
         05 00 00 00 00 00 05 00 01 00 00 00 01 00 00 00
         00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
