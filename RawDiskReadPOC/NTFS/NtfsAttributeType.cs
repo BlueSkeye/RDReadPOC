@@ -1,8 +1,15 @@
 ﻿
 namespace RawDiskReadPOC.NTFS
 {
+    /// <summary>System defined attributes (32-bit). Each attribute type has a corresponding
+    /// attribute name (Unicode string of maximum 64 character length) as described by the
+    /// attribute definitions present in the data attribute of the $AttrDef system file. On
+    /// NTFS 3.0 volumes the names are just as the types are named in the below defines
+    /// exchanging AT_ for the dollar sign($).  If that is not a revealing choice of symbol
+    /// I do not know what is...</summary>
     internal enum NtfsAttributeType : uint
     {
+        Unused = 0,
         AttributeStandardInformation = 0x10,
         AttributeAttributeList = 0x20,
         AttributeFileName = 0x30,

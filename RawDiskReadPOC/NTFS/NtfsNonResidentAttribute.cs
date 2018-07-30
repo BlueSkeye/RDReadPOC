@@ -134,34 +134,44 @@ namespace RawDiskReadPOC.NTFS
             return new NonResidentDataStream(chunks, true);
         }
 
-        /// <summary>An ATTRIBUTE structure containing members common to resident and
-        /// nonresident attributes.</summary>
+        /// <summary>An <see cref="NtfsAttribute"/> structure containing members common to resident
+        /// and nonresident attributes.</summary>
         internal NtfsAttribute Header;
-        /// <summary>The lowest valid Virtual Cluster Number (VCN) of this portion of the
-        /// attribute value. Unless the attribute value is very fragmented (to the extent
-        /// that an attribute list is needed to describe it), there is only one portion of
-        /// the attribute value, and the value of LowVcn is zero.</summary>
+        /// <summary>Lowest valid virtual cluster number (VCN) for this portion of the attribute
+        /// value or 0 if this is the only extent(usually the case). - Only when an attribute list
+        /// is used does lowest_vcn != 0 ever occur.</summary>
         internal ulong LowVcn;
-        /// <summary>The highest valid VCN of this portion of the attribute value.</summary>
+        /// <summary>Highest valid vcn of this extent of the attribute value. - Usually there is
+        /// only one portion, so this usually equals the attribute value size in clusters minus 1.
+        /// Can be -1 for zero length files.Can be 0 for "single extent" attributes.</summary>
         internal ulong HighVcn;
-        /// <summary>The offset, in bytes, from the start of the structure to the run array that
-        /// contains the mappings between VCNs and Logical Cluster Numbers(LCNs).</summary>
+        /// <summary>Byte offset from the beginning of the structure to the mapping pairs array
+        /// which contains the mappings between the vcns and the logical cluster numbers(lcns).
+        /// When creating, place this at the end of this record header aligned to 8-byte boundary.</summary>
         internal ushort RunArrayOffset;
-        /// <summary>The compression unit for the attribute expressed as the logarithm to the
-        /// base two of the number of clusters in a compression unit. If CompressionUnit is zero,
-        /// the attribute is not compressed.</summary>
+        /// <summary>The compression unit expressed as the log to the base 2 of the number of
+        /// clusters in a compression unit. 0 means not compressed.  (This effectively limits the
+        /// compression unit size to be a power of two clusters.)  WinNT4 only uses a value of 4.
+        /// Sparse files also have this set to 0 on XPSP2.</summary>
         internal byte CompressionUnit;
-        internal byte Alignment1;
-        internal uint Alignment2;
-        /// <summary>The size, in bytes, of disk space allocated to hold the attribute value</summary>
+        internal byte _filler1;
+        internal uint _filler2;
+        /* The sizes below are only used when lowest_vcn is zero, as otherwise it would
+           be difficult to keep them up-to-date.*/
+        /// <summary>Byte size of disk space allocated to hold the attribute value.Always is 
+        /// multiple of the cluster size. When a file is compressed, this field is a multiple of
+        /// the compression block size (2^compression_unit) and it represents the logically allocated
+        /// space rather than the actual on disk usage. For this use the compressed_size (see below).</summary>
         internal ulong AllocatedSize;
-        /// <summary>The size, in bytes, of the attribute value. This may be larger than the AllocatedSize
-        /// if the attribute value is compressed or sparse.</summary>
+        /// <summary>Byte size of the attribute value.Can be larger than allocated_size if
+        /// attribute value is compressed or sparse.</summary>
         internal ulong DataSize;
-        /// <summary>The size, in bytes, of the initialized portion of the attribute value.</summary>
+        /// <summary>Byte size of initialized portion of the attribute value.Usually equals
+        /// data_size.</summary>
         internal ulong InitializedSize;
-        /// <summary>The size, in bytes, of the attribute value after compression. This member is only
-        /// present when the attribute is compressed.</summary>
+        /// <summary>Byte size of the attribute value after compression.Only present when compressed
+        /// or sparse.Always is a multiple of the cluster size.  Represents the actual amount of disk
+        /// space being used on the disk.</summary>
         internal ulong CompressedSize;
 
         internal class LogicalChunk

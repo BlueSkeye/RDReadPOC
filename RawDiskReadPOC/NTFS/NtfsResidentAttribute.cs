@@ -47,16 +47,28 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
-        /// <summary>An ATTRIBUTE structure containing members common to resident and nonresident
-        /// attributes.</summary>
+        /// <summary>An <see cref="NtfsAttribute"/> structure containing members common to resident
+        /// and nonresident attributes.</summary>
         internal NtfsAttribute Header;
-        /// <summary>The size, in bytes, of the attribute value.</summary>
+        /// <summary>Byte size of attribute value.</summary>
         internal uint ValueLength;
-        /// <summary>The offset, in bytes, from the start of the structure to the attribute value.</summary>
+        /// <summary>Byte offset of the attribute value from the start of the attribute record.When
+        /// creating, align to 8-byte boundary if we have a name present as this might not have a
+        /// length of a multiple of 8-bytes.</summary>
         internal ushort ValueOffset;
         /// <summary>A bit array of flags specifying properties of the attribute. The values
         /// defined include: Indexed 0x0001</summary>
         internal ushort Flags;
+        /// <summary>Reserved/alignment to 8-byte boundary.</summary>
+        internal sbyte _filler;
+
+        internal enum ResidentAttributeFlags : ushort
+        {
+            None = 0,
+            /// <summary>Attribute is referenced in an index (has implications for deleting and
+            /// modifying the attribute).</summary>
+            IsIndexed = 0x01,
+        }
 
         private class ResidentDataStream : Stream
         {

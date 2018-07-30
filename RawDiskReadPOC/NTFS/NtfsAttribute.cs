@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Text;
 
+using RawDiskReadPOC.NTFS.Indexing;
+
 namespace RawDiskReadPOC.NTFS
 {
     /// <summary></summary>
@@ -105,20 +107,25 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        /// <summary>The (32-bit) type of the attribute.</summary>
         internal NtfsAttributeType AttributeType;
-        /// <summary>The size, in bytes, of the resident part of the attribute.</summary>
+        /// <summary>Byte size of the resident part of the attribute(aligned to 8-byte boundary). Used
+        /// to get to the next attribute.</summary>
         internal uint Length;
-        /// <summary>Specifies, when true, that the attribute value is nonresident.</summary>
+        /// <summary>If 0, attribute is resident. If 1, attribute is non-resident.</summary>
         internal byte Nonresident;
-        /// <summary>The size, in characters, of the name (if any) of the attribute.</summary>
+        /// <summary>Unicode character size of name of attribute. 0 if unnamed.</summary>
         internal byte NameLength;
-        /// <summary>The offset, in bytes, from the start of the structure to the attribute name.
-        /// The attribute name is stored as a Unicode string.</summary>
+        /// <summary>If name_length != 0, the byte offset to the beginning of the name from the
+        /// attribute record.Note that the name is stored as a Unicode string. When creating, place
+        /// offset just at the end of the record header. Then, follow with attribute value or mapping
+        /// pairs array, resident and non-resident attributes respectively, aligning to an 8-byte
+        /// boundary.</summary>
         internal ushort NameOffset;
-        /// <summary>A bit array of flags specifying properties of the attribute. The values
-        /// defined include: Compressed 0x0001</summary>
+        /// <summary>Flags describing the attribute.</summary>
         internal ushort Flags;
-        /// <summary>A numeric identifier for the instance of the attribute.</summary>
+        /// <summary>The instance of this attribute record. This number is unique within this mft
+        /// record (see MFT_RECORD/next_attribute_instance notes in in mft.h for more details).</summary>
         internal ushort AttributeNumber;
     }
 }

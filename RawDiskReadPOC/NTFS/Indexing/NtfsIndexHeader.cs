@@ -1,8 +1,8 @@
 ﻿using System;
 
-namespace RawDiskReadPOC.NTFS
+namespace RawDiskReadPOC.NTFS.Indexing
 {
-    internal struct NtfsDirectoryIndex
+    internal struct NtfsIndexHeader
     {
         internal void Dump()
         {

@@ -4,14 +4,30 @@ using System.Text;
 namespace RawDiskReadPOC.NTFS
 {
     /// <summary></summary>
-    /// <remarks>The attribute list attribute is always nonresident and consists of an array of
-    /// ATTRIBUTE_LIST structures. An attribute list attribute is only needed when the attributes
-    /// of a file do not fit in a single MFT record. Possible reasons for overflowing a single
-    /// MFT entry include:
-    /// - The file has a large numbers of alternate names (hard links)
-    /// - The attribute value is large, and the volume is badly fragmented
-    /// - The file has a complex security descriptor (does not affect NTFS 3.0)
-    /// - The file has many streams</remarks>
+    /// <remarks>Can be either resident or non-resident.
+    /// Value consists of a sequence of variable length, 8-byte aligned, ATTR_LIST_ENTRY
+    /// records.
+    /// The list is not terminated by anything at all! The only way to know when the end is
+    /// reached is to keep track of the current offset and compare it to the attribute value
+    /// size.
+    /// The attribute list attribute contains one entry for each attribute of the file in
+    /// which the list is located, except for the list attribute itself. The list is sorted:
+    /// first by attribute type, second by attribute name (if present), third by instance
+    /// number. The extents of one non-resident attribute (if present) immediately follow
+    /// after the initial extent. They are ordered by lowest_vcn and have their instace set
+    /// to zero. It is not allowed to have two attributes with all sorting keys equal.
+    /// Further restrictions:
+    /// If not resident, the vcn to lcn mapping array has to fit inside the base mft record.
+    /// The attribute list attribute value has a maximum size of 256kb. This is imposed by
+    /// the Windows cache manager.
+    /// Attribute lists are only used when the attributes of mft record do not fit inside
+    /// the mft record despite all attributes (that can be made non-resident) having been
+    /// made non-resident. This can happen e.g.when:
+    /// - File has a large number of hard links (lots of filename attributes present).
+    /// - The mapping pairs array of some non-resident attribute becomes so large due to
+    ///   fragmentation that it overflows the mft record.
+    /// - The security descriptor is very complex(not applicable to NTFS 3.0 volumes).
+    /// - There are many named streams.</remarks>
     internal struct NtfsAttributeListAttribute
     {
         /// <summary>Returns attribute name or a null reference if the name is undefined.</summary>
@@ -40,24 +56,29 @@ namespace RawDiskReadPOC.NTFS
                 AttributeNumber, Name);
         }
 
-        /// <summary>WARNING : Doesn't conform to standard attribute header.</summary>
+        /// <summary>Type of referenced attribute.</summary>
         internal NtfsAttributeType AttributeType;
+        /// <summary>Byte size of this entry (8-byte aligned).</summary>
         internal ushort EntryLength;
-        /// <summary>The size, in characters, of the name (if any) of the attribute.</summary>
+        /// <summary>Size in Unicode chars of the name of the attribute or 0 if unnamed.</summary>
         internal byte NameLength;
-        /// <summary>The offset, in bytes, from the start of the ATTRIBUTE_LIST structure to the
-        /// attribute name.The attribute name is stored as a Unicode string.</summary>
+        /// <summary>Byte offset to beginning of attribute name (always set this to where
+        /// the name would start even if unnamed).</summary>
         internal byte NameOffset;
-        /// <summary>The lowest valid Virtual Cluster Number (VCN) of this portion of the
-        /// attribute value.</summary>
+        /// <summary>Lowest virtual cluster number of this portion of the attribute value.
+        /// This is usually 0. It is non-zero for the case where one attribute does not fit
+        /// into one mft record and thus several mft records are allocated to hold this
+        /// attribute.In the latter case, each mft record holds one extent of the attribute
+        /// and there is one attribute list entry for each extent.
+        /// NOTE: This is DEFINITELY a signed value! The windows driver uses cmp, followed
+        /// by jg when comparing this, thus it treats it as signed.</summary>
         internal ulong LowVcn;
-        /// <summary>The file reference number of the MFT entry containing the NONRESIDENT_ATTRIBUTE
-        /// structure for this portion of the attribute value.</summary>
+        /// <summary>The reference of the mft record holding the <see cref="NtfsAttribute"/>
+        /// for this portion of the attribute value.</summary>
         internal ulong FileReferenceNumber;
-        /// <summary>A numeric identifier for the instance of the attribute.</summary>
+        /// <summary>If lowest_vcn = 0, the instance of the attribute being referenced;
+        /// otherwise 0.</summary>
         internal ushort AttributeNumber;
-        internal ushort Alignment1;
-        internal ushort Alignment2;
-        internal ushort Alignment3;
+        // The name if any starts here. 
     }
 }

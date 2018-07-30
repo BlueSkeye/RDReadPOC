@@ -3,8 +3,11 @@ using System.IO;
 
 namespace RawDiskReadPOC.NTFS
 {
-    /// <summary>An entry in the MFT consists of a FILE_RECORD_HEADER followed by a sequence of
-    /// attributes.</summary>
+    /// <summary>The mft record header present at the beginning of every record in the mft.
+    /// This is followed by a sequence of variable length attribute records which is
+    /// terminated by an attribute of type AT_END which is a truncated attribute in that it
+    /// only consists of the attribute type code AT_END and none of the other members of the
+    /// attribute structure are present.</summary>
     internal struct NtfsFileRecord
     {
         internal unsafe void ApplyFixups()
@@ -155,26 +158,72 @@ namespace RawDiskReadPOC.NTFS
         internal const ulong RECORD_SIZE = 1024;
         /// <summary>An NTFS_RECORD_HEADER structure with a Type of ‘FILE’.</summary>
         internal NtfsRecord Ntfs;
-        /// <summary>The number of times that the MFT entry has been reused.</summary>
+        /// <summary>$LogFile sequence number for this record. Changed every time the record
+        /// is modified.</summary>
+        internal ulong LogFileSequenceNumber;
+        /// <summary>Number of times this mft record has been reused. (See description for
+        /// MFT_REF above.) NOTE: The increment(skipping zero) is done when the file is
+        /// deleted.NOTE: If this is zero it is left zero.</summary>
         internal ushort SequenceNumber;
-        /// <summary>The number of directory links to the MFT entry.</summary>
+        /// <summary>Number of hard links, i.e. the number of directory entries referencing
+        /// this record.
+        /// NOTE: Only used in mft base records.
+        /// NOTE: When deleting a directory entry we check the link_count and if it is 1 we
+        /// delete the file. Otherwise we delete the FILENAME_ATTR being referenced by the
+        /// directory entry from the mft record and decrement the link_count.
+        /// FIXME: Careful with Win32 + DOS names!</summary>
         internal ushort LinkCount;
-        /// <summary>The offset, in bytes, from the start of the structure to the first attribute
-        /// of the MFT entry</summary>
+        /// <summary>Byte offset to the first attribute in this mft record from the start of
+        /// the mft record.
+        /// NOTE: Must be aligned to 8-byte boundary.</summary>
         internal ushort AttributesOffset;
-        /// <summary>A bit array of flags specifying properties of the MFT entry. The values defined
-        /// include:0x0001 = InUse, 0x0002 = Directory</summary>
-        internal ushort Flags;
-        /// <summary>The number of bytes used by the MFT entry.</summary>
+        /// <summary>Bit array of MFT_RECORD_FLAGS. When a file is deleted, the
+        /// <see cref="FileRecordFlags.InUse"/> flag is set to zero.</summary>
+        internal FileRecordFlags Flags;
+        /// <summary>Number of bytes used in this mft record.
+        /// NOTE: Must be aligned to 8-byte boundary.</summary>
         internal uint BytesInUse;
-        /// <summary>The number of bytes allocated for the MFT entry.</summary>
+        /// <summary>Number of bytes allocated for this mft record. This should be equal to
+        /// the mft record size.</summary>
         internal uint BytesAllocated;
-        /// <summary>If the MFT entry contains attributes that overflowed a base MFT entry, this
-        /// member contains the file reference number of the base entry; otherwise, it contains
-        /// zero.</summary>
+        /// <summary>This is zero for base mft records. When it is not zero it is a mft
+        /// reference pointing to the base mft record to which this record belongs (this is
+        /// then used to locate the attribute list attribute present in the base record
+        /// which describes this extension record and hence might need modification when the
+        /// extension record itself is modified, also locating the attribute list also means
+        /// finding the other potential extents, belonging to the non-base mft record).</summary>
         internal ulong BaseFileRecord;
-        /// <summary>The number that will be assigned to the next attribute added to the MFT entry.
-        /// </summary>
+        /// <summary>The instance number that will be assigned to the next attribute added
+        /// to this mft record.
+        /// NOTE: Incremented each time after it is used.
+        /// NOTE: Every time the mft record is reused this number is set to zero.
+        /// NOTE: The first instance number is always 0.</summary>
         internal ushort NextAttributeNumber;
+        internal ushort _unused; // Specific to NTFS 3.1+ (Windows XP and above)
+        /// <summary>Number of this mft record. Specific to NTFS 3.1+ (Windows XP and above)</summary>
+        internal uint MftRecordNumber;
+        // When(re)using the mft record, we place the update sequence array at this offset,
+        // i.e.before we start with the attributes. This also makes sense, otherwise we
+        // could run into problems with the update sequence array containing in itself the
+        // last two bytes of a sector which would mean that multi sector transfer protection
+        // wouldn't work.  As you can't protect data by overwriting it since you then can't
+        // get it back... When reading we obviously use the data from the ntfs record header.
+
+        /// <summary>These are the so far known MFT_RECORD_* flags (16-bit) which contain
+        /// information about the mft record in which they are present.</summary>
+        [Flags()]
+        internal enum FileRecordFlags : ushort
+        {
+            /// <summary>Is set for all in-use mft records.</summary>
+            InUse = 0x0001,
+            /// <summary>Is set for all directory mft records, i.e. mft records containing
+            /// and index with name "$I30" indexing filename attributes.</summary>
+            Directory = 0x0002,
+            /// <summary>Is set for all system files present in the $Extend system directory.</summary>
+            InExtend = 0x0004,
+            /// <summary>is set for all system files containing one or more indices with a
+            /// name other than "$I30".</summary>
+            IsViewIndex = 0x0008,
+        }
     }
 }

@@ -1,5 +1,8 @@
 ﻿Best info today for header :
 http://ultradefrag.sourceforge.net/doc/man/ntfs/NTFS_On_Disk_Structure.pdf
+
+ntfs_layout.h by Anton Altaparmakov. A lot of structure comments have been copied
+were relevant.
 https://ultradefrag.net/doc/man/ntfs/ntfs_layout.h.html
 
 Other docs :
@@ -16,6 +19,25 @@ http://forensic-proof.com/wp-content/uploads/2010/10/FP_NTFS_Forensic_Analysis.p
 $UsnJrnl
 http://docplayer.net/19759108-Forensic-insight-digital-forensics-community-in-korea-ntfs-log-tracker-blueangel-blueangel1275-gmail-com-forensic-note-blogspot-kr.html
 Record format : http://msdn.microsoft.com/en-us/library/aa365722.aspx
+
+MFT References
+==============
+mft references (aka file references or file record segment references) are used whenever a
+structure needs to refer to a record in the mft. A reference consists of a 48-bit index
+into the mft and a 16-bit sequence number used to detect stale references.
+For error reporting purposes we treat the 48-bit index as a signed quantity.
+The sequence number is a circular counter (skipping 0) describing how many times the
+referenced mft record has been (re)used. This has to match the sequence number of the mft
+record being referenced, otherwise the reference is considered stale and removed
+(FIXME: only ntfsck or the driver itself?).
+If the sequence number is zero it is assumed that no sequence number consistency checking
+should be performed.
+FIXME: The mft zone is defined as the first 12% of the volume. This space is reserved so
+that the mft can grow contiguously and hence doesn't become fragmented. Volume free space
+includes the empty part of the mft zone and when the volume's free 88% are used up, the
+mft zone is shrunk by a factor of 2, thus making more space available for more files/data.
+This process is repeated everytime there is no more free space except for the mft zone
+until there really is no more free space.
 
 MFT Size
 ========

@@ -4,6 +4,7 @@ using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 
 using RawDiskReadPOC.NTFS;
+using RawDiskReadPOC.NTFS.Indexing;
 
 namespace RawDiskReadPOC
 {
@@ -104,7 +105,7 @@ namespace RawDiskReadPOC
                     // Locate file.
                     // string fileName = @"TEMP\AsciiTes.txt";
                     string fileName = @"$Extend\$UsnJrnl";
-                    NtfsIndexEntry* fileDescriptor = ntfsPartition.FindFile(fileName);
+                    NtfsIndexEntryHeader* fileDescriptor = ntfsPartition.FindFile(fileName);
                     if (null == fileDescriptor) {
                         throw new System.IO.FileNotFoundException(fileName);
                     }

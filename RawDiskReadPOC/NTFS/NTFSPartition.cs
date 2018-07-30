@@ -4,7 +4,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 
-using RawDiskReadPOC;
+using RawDiskReadPOC.NTFS.Indexing;
 
 namespace RawDiskReadPOC.NTFS
 {
@@ -36,9 +36,10 @@ namespace RawDiskReadPOC.NTFS
             get { return _bytesPerSector; }
         }
 
-        /// <summary>Size in bytes.</summary>
+        /// <summary>Mft record size in clusters.</summary>
         internal ulong MFTEntrySize { get; private set; }
 
+        /// <summary>Index block size in clusters.</summary>
         internal ulong ClustersPerIndexBuffer { get; private set; }
 
         internal ulong ClusterSize
@@ -65,16 +66,23 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        /// <summary>Cluster location of mft data.</summary>
         internal ulong MFTClusterNumber { get; private set; }
 
+        /// <summary>Cluster location of copy of mft.</summary>
         internal ulong MFTMirrorClusterNumber { get; private set; }
 
+        /// <summary>Size of a cluster in sectors.</summary>
         internal uint SectorsPerCluster { get; private set; }
 
         internal uint SectorsPerTrack { get; private set; }
 
+        /// <summary>Number of sectors in volume. Gives maximum volume size of 2^63 sectors.
+        /// Assuming standard sector size of 512 bytes, the maximum byte size is approx.
+        /// 4.7x10 ^ 21 bytes.</summary>
         internal ulong TotalSectorsCount { get; private set; }
 
+        /// <summary>Irrelevant (serial number).</summary>
         internal ulong VolumeSerialNumber { get; private set; }
         
         private static void AssertFindDirectoryItems(string[] pathItems)
@@ -147,18 +155,16 @@ namespace RawDiskReadPOC.NTFS
             rawPtr += sizeof(NtfsRecord);
             ulong blockVCN = *((ulong*)rawPtr);
             rawPtr += sizeof(ulong);
-            NtfsNodeHeader* nodeHeader = (NtfsNodeHeader*)rawPtr;
-            byte* basePtr = (byte*)nodeHeader;
-            rawPtr += sizeof(NtfsNodeHeader);
-            for (uint currentOffset = nodeHeader->OffsetToFirstIndexEntry;
-                currentOffset < nodeHeader->OffsetToEndOfIndexEntries;
-                )
+            NtfsNodeHeader* pNodeHeader = (NtfsNodeHeader*)rawPtr;
+            NtfsIndexEntryHeader* currentEntry = null;
+            for (uint currentOffset = pNodeHeader->OffsetToFirstIndexEntry;
+                currentOffset < pNodeHeader->IndexLength;
+                currentOffset += currentEntry->EntryLength)
             {
-                NtfsIndexEntry* currentEntry = (NtfsIndexEntry*)(basePtr + currentOffset);
-                NtfsFileNameAttribute* fileName = (NtfsFileNameAttribute*)(basePtr + currentOffset + sizeof(NtfsIndexEntry));
-                string name = fileName->GetName();
-                currentOffset += currentEntry->EntryLength;
-                Console.WriteLine(name);
+                currentEntry = (NtfsIndexEntryHeader*)(((byte*)pNodeHeader) + currentOffset);
+                NtfsFileNameAttribute* fileName =
+                    (NtfsFileNameAttribute*)(((byte*)pNodeHeader) + currentOffset + sizeof(NtfsIndexEntryHeader));
+                Console.WriteLine(fileName->GetName());
             }
         }
 
@@ -318,7 +324,7 @@ namespace RawDiskReadPOC.NTFS
         /// <summary> Find the <see cref="NtfsRecord"/> matching the given path items.</summary>
         /// <param name="searchedName">Searched item name.</param>
         /// <returns></returns>
-        private unsafe NtfsIndexEntry* _FindChildItem(NtfsFileRecord* fromRecord, string searchedName,
+        private unsafe NtfsIndexEntryHeader* _FindChildItem(NtfsFileRecord* fromRecord, string searchedName,
             out IPartitionClusterData clusterData)
         {
             if (FeaturesContext.FindFileAlgorithmTrace) {
@@ -347,10 +353,10 @@ namespace RawDiskReadPOC.NTFS
                     rootIndexAttribute->Dump();
                 }
                 ulong indexAllocationVCN = ulong.MaxValue;
-                NtfsIndexEntry* match = null;
-                rootIndexAttribute->EnumerateIndexEntries(delegate (NtfsDirectoryIndexEntry* scannedEntry) {
-                    string candidateName = scannedEntry->Name;
-                    bool lastEntry = scannedEntry->GenericEntry.LastIndexEntry;
+                NtfsIndexEntryHeader* match = null;
+                rootIndexAttribute->EnumerateIndexEntries(delegate (NtfsIndexEntryHeader* scannedEntry) {
+                    string candidateName = ((NtfsFilenameIndexEntry*)scannedEntry)->Name;
+                    bool lastEntry = scannedEntry->LastIndexEntry;
                     if (lastEntry) {
                         indexAllocationVCN = scannedEntry->ChildNodeVCN;
                         return false;
@@ -370,7 +376,7 @@ namespace RawDiskReadPOC.NTFS
                             }
                             return false;
                         case 0:
-                            match = (NtfsIndexEntry*)scannedEntry;
+                            match = (NtfsIndexEntryHeader*)scannedEntry;
                             return false;
                         case 1:
                             if (FeaturesContext.FindFileAlgorithmTrace) {
@@ -407,6 +413,8 @@ namespace RawDiskReadPOC.NTFS
                 // Get attribute content and scaan 
                 using (IClusterStream dataStream = indexAllocationAttributeHeader->OpenDataClusterStream()) {
                     IPartitionClusterData rawData = null;
+                    // TODO : Change this. We should be able to seek along the data stream without reading
+                    // previous clusters.
                     for (ulong clusterIndex = 0; clusterIndex <= indexAllocationVCN; clusterIndex++) {
                         rawData = dataStream.ReadNextCluster();
                         if (null == rawData) {
@@ -422,23 +430,22 @@ namespace RawDiskReadPOC.NTFS
                     rawPtr += sizeof(NtfsRecord);
                     ulong blockVCN = *((ulong*)rawPtr);
                     rawPtr += sizeof(ulong);
-                    NtfsNodeHeader* nodeHeader = (NtfsNodeHeader*)rawPtr;
-                    byte* basePtr = (byte*)nodeHeader;
-                    rawPtr += sizeof(NtfsNodeHeader);
+                    NtfsNodeHeader* pNodeHeader = (NtfsNodeHeader*)rawPtr;
                     if (FeaturesContext.FindFileAlgorithmTrace) {
-                        nodeHeader->Dump();
+                        pNodeHeader->Dump();
                     }
-                    for(uint currentOffset = nodeHeader->OffsetToFirstIndexEntry;
-                        currentOffset < nodeHeader->OffsetToEndOfIndexEntries;
-                        )
+                    NtfsIndexEntryHeader* currentEntry = null;
+                    for (uint currentOffset = pNodeHeader->OffsetToFirstIndexEntry;
+                        currentOffset < pNodeHeader->IndexLength;
+                        currentOffset += currentEntry->EntryLength)
                     {
-                        NtfsIndexEntry* currentEntry = (NtfsIndexEntry*)(basePtr + currentOffset);
-                        NtfsFileNameAttribute* fileName = (NtfsFileNameAttribute*)(basePtr + currentOffset + sizeof(NtfsIndexEntry));
+                        currentEntry = (NtfsIndexEntryHeader*)(((byte*)pNodeHeader) + currentOffset);
+                        NtfsFileNameAttribute* fileName =
+                            (NtfsFileNameAttribute*)(((byte*)pNodeHeader) + currentOffset + sizeof(NtfsIndexEntryHeader));
                         string name = fileName->GetName();
                         if (searchedName == name) {
                             return currentEntry;
                         }
-                        currentOffset += currentEntry->EntryLength;
                         if (FeaturesContext.FindFileAlgorithmTrace) {
                             Console.WriteLine(name);
                         }
@@ -461,7 +468,7 @@ namespace RawDiskReadPOC.NTFS
         /// <param name="partitionPath">A path without the drive letter. The leading antislash is optional.
         /// </param>
         /// <returns>An <see cref="NtfsRecord"/> for the file or a null reference if not found.</returns>
-        internal unsafe NtfsIndexEntry* FindFile(string partitionPath)
+        internal unsafe NtfsIndexEntryHeader* FindFile(string partitionPath)
         {
             if (string.IsNullOrEmpty(partitionPath)) {
                 throw new ArgumentNullException();
@@ -494,7 +501,7 @@ namespace RawDiskReadPOC.NTFS
                 NtfsFileRecord* previousRecord = currentRecord;
                 try {
                     previousClusterData = clusterData;
-                    NtfsIndexEntry* scannedEntry = _FindChildItem(previousRecord, pathItems[index], out clusterData);
+                    NtfsIndexEntryHeader* scannedEntry = _FindChildItem(previousRecord, pathItems[index], out clusterData);
                     if (null == scannedEntry) {
                         // Some part of the path is missing.
                         return null;
@@ -578,29 +585,37 @@ namespace RawDiskReadPOC.NTFS
 
         internal unsafe void InterpretBootSector()
         {
-            using(IPartitionClusterData clusterData = ReadSectors(0)) {
+            // The standard NTFS_BOOT_SECTOR is on sector 0 of the partition.
+            // On NT4 and above there is one backup copy of the boot sector to be found on
+            // the last sector of the partition(not normally accessible from within Windows
+            // as the bootsector contained number of sectors value is one less than the
+            // actual value!).
+            // On versions of NT 3.51 and earlier, the backup copy was located at number of
+            // sectors / 2(integer divide), i.e. in the middle of the volume.
+            using (IPartitionClusterData clusterData = ReadSectors(0)) {
                 byte* sector = clusterData.Data;
                 if (0x55 != sector[510]) { throw new ApplicationException(); }
                 if (0xAA != sector[511]) { throw new ApplicationException(); }
                 byte* sectorPosition = sector + 3; // Skip jump instruction.
                 // Verify OEMID field conformance.
-                int OEMIDlength = Constants.OEMID.Length;
-                for(int index = 0; index < OEMIDlength; index++) {
+                int OEMIDlength = Constants.OEMID.Length; // Magic "NTFS    ".
+                for (int index = 0; index < OEMIDlength; index++) {
                     if (*(sectorPosition++) != Constants.OEMID[index]) {
                         throw new ApplicationException();
                     }
                 }
                 _bytesPerSector = *(ushort*)(sectorPosition); sectorPosition += sizeof(ushort);
                 SectorsPerCluster = *(byte*)(sectorPosition++);
-                sectorPosition += sizeof(ushort); // Unused
-                sectorPosition += 3; // Unused
-                sectorPosition += sizeof(ushort); // Unused
-                MediaDescriptor = *(byte*)(sectorPosition++);
-                sectorPosition += sizeof(ushort); // Unused
+                sectorPosition += sizeof(ushort); // Unused : reserved sectors
+                sectorPosition += 1; // Unused : fats (count?)
+                sectorPosition += 2; // Unused: root entries
+                sectorPosition += sizeof(ushort); // Unused : sectors
+                MediaDescriptor = *(byte*)(sectorPosition++); // 0xF8 = hard disk
+                sectorPosition += sizeof(ushort); // Unused :sectors per fat
                 SectorsPerTrack = *(ushort*)(sectorPosition); sectorPosition += sizeof(ushort);
                 HeadsCount = *(ushort*)(sectorPosition); sectorPosition += sizeof(ushort);
                 HiddenSectorsCount = *(uint*)(sectorPosition); sectorPosition += sizeof(uint);
-                sectorPosition += sizeof(uint); // Unused
+                sectorPosition += sizeof(uint); // Unused : large sectors
                 sectorPosition += sizeof(uint); // Unused
                 TotalSectorsCount = *(ulong*)(sectorPosition); sectorPosition += sizeof(ulong);
                 MFTClusterNumber = *(ulong*)(sectorPosition); sectorPosition += sizeof(ulong);
@@ -616,7 +631,7 @@ namespace RawDiskReadPOC.NTFS
                     : (1UL << (-rawClusteringValue));
                 sectorPosition += 3; // Unused
                 VolumeSerialNumber = *(ulong*)(sectorPosition); sectorPosition += sizeof(ulong);
-                sectorPosition += sizeof(uint); // Unused
+                sectorPosition += sizeof(uint); // Checksum
                 if (0x54 != (sectorPosition - sector)) { throw new ApplicationException(); }
             }
         }
@@ -817,6 +832,7 @@ namespace RawDiskReadPOC.NTFS
 
         /// <summary>This program is for use on Windows only</summary>
         private const char PathSeparator = '\\';
+        /// <summary>Size of a sector in bytes.</summary>
         private uint _bytesPerSector;
         private List<NtfsNonResidentAttribute.LogicalChunk> _chunks;
         private ulong[] _metadataFileLBAs = new ulong[16];

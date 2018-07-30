@@ -1,11 +1,24 @@
 ﻿using System;
 
+using RawDiskReadPOC.NTFS.Indexing;
+
 namespace RawDiskReadPOC.NTFS
 {
     /// <summary>This is the root node of the B+ tree that implements an index (e.g. a directory).
-    /// This file attribute is always resident.</summary>
+    /// This file attribute is always resident.
+    /// This is followed by a sequence of index entries (INDEX_ENTRY structures) as described
+    /// by the index header.
+    /// When a directory is small enough to fit inside the index root then this is the only
+    /// attribute describing the directory. When the directory is too large to fit in the index
+    /// root, on the other hand, two aditional attributes are present: an index allocation
+    /// attribute, containing sub-nodes of the B+ directory tree (see below), and a bitmap
+    /// attribute, describing which virtual cluster numbers (vcns) in the index allocation
+    /// attribute are in use by an index block.</summary>
     /// <remarks>An INDEX_ROOT structure is followed by a sequence of DIRECTORY_ENTRY structures.
-    /// Total size before first possible entry is 0x38/56 bytes.</remarks>
+    /// Total size before first possible entry is 0x38/56 bytes.
+    /// NOTE: Always resident.
+    /// NOTE: The root directory (FILE_root) contains an entry for itself. Other dircetories do
+    /// not contain entries for themselves, though.</remarks>
     internal struct NtfsRootIndexAttribute
     {
         internal unsafe void Dump()
@@ -16,7 +29,7 @@ namespace RawDiskReadPOC.NTFS
                 CollationRule,
                 BytesPerIndexRecord, ClustersPerIndexRecord);
             int entryIndex = 0;
-            EnumerateIndexEntries(delegate (NtfsDirectoryIndexEntry* scannedEntry) {
+            EnumerateIndexEntries(delegate (NtfsIndexEntryHeader* scannedEntry) {
                 Console.WriteLine(Helpers.Indent(2) + "entry #{0}", entryIndex++);
                 scannedEntry->Dump();
                 return true;
@@ -31,51 +44,46 @@ namespace RawDiskReadPOC.NTFS
                 if (traceNodes) {
                     pNodeHeader->Dump();
                 }
-                NtfsDirectoryIndexEntry* scannedEntry =
-                    (NtfsDirectoryIndexEntry*)((byte*)pNodeHeader + pNodeHeader->OffsetToFirstIndexEntry);
+                NtfsIndexEntryHeader* pIndexEntry =
+                    (NtfsIndexEntryHeader*)((byte*)pNodeHeader + pNodeHeader->OffsetToFirstIndexEntry);
                 while (true) {
-                    ulong scannedEntryOffset = (ulong)((byte*)scannedEntry - (byte*)pNodeHeader);
-                    if (pNodeHeader->OffsetToEndOfIndexEntries <= scannedEntryOffset) {
+                    ulong scannedEntryOffset = (ulong)((byte*)pIndexEntry - (byte*)pNodeHeader);
+                    if (pNodeHeader->IndexLength <= scannedEntryOffset) {
                         throw new ApplicationException();
                     }
-                    if (!callback(scannedEntry)) {
+                    if (!callback(pIndexEntry)) {
                         return;
                     }
                     // TODO : Clarify exit condition. Does the last record holds any valuable data ?
-                    if (scannedEntry->GenericEntry.LastIndexEntry) {
+                    if (pIndexEntry->LastIndexEntry) {
                         return;
                     }
-                    scannedEntry = (NtfsDirectoryIndexEntry*)((byte*)scannedEntry + scannedEntry->GenericEntry.EntryLength);
+                    pIndexEntry = (NtfsIndexEntryHeader*)((byte*)pIndexEntry + pIndexEntry->EntryLength);
                 }
                 throw new ApplicationException("Last index entry missing.");
             }
         }
 
-        //internal uint GetTotalSize()
-        //{
-        //    uint result = Header.Header.Length;
-        //    return result;
-        //}
-
-        //// This part is 0x18/24 bytes
-        //internal NtfsResidentAttribute Header;
-        //// TODO : Clarify why this padding is required. EITHER there is an alignment constraint that we
-        //// missed in our readings OR there are additional fields that are new in our testing environment.
-        //// The later is less likely due to FS version.
-        //internal ulong _padding;
-
         // The following part, until NodeHeader (not included) is 0x10/16 bytes.
-        /// <summary>The type of the attribute that is indexed</summary>
+
+        /// <summary>The type of the attribute that is indexed. Is AT_FILENAME for directories,
+        /// zero for view indexes. No other values allowed.</summary>
         internal uint Type;
-        /// <summary>A numeric identifier of the collation rule used to sort the index entries.</summary>
+        /// <summary>A numeric identifier of the collation rule used to sort the index entries.
+        /// Collation rule used to sort the index entries. If type is AT_FILENAME, this must be
+        /// COLLATION_FILENAME.</summary>
         internal uint CollationRule;
         /// <summary>The number of bytes per index record. This is the size of the records in the
-        /// <see cref="NtfsIndexAllocationAttribute"/> data part.</summary>
+        /// <see cref="NtfsIndexAllocationAttribute"/> data part.
+        /// Size of each index block in bytes (in the index allocation attribute).</summary>
         internal uint BytesPerIndexRecord;
         /// <summary>The number of clusters per index record. For the possible interpretation of this value,
         /// consider the usual rule that a negative value means the Log2 of the real value.
         /// The value must also be consistent with the one to be found in <see cref="NtfsPartition"/>
-        /// </summary>
+        /// Cluster size of each index block (in the index allocation attribute), when an index
+        /// block is >= than a cluster, otherwise this will be the log of the size (like how
+        /// the encoding of the mft record size and the index record size found in the boot
+        /// sector work). Has to be a power of 2.</summary>
         internal byte ClustersPerIndexRecord;
         internal byte _unused1;
         internal byte _unused2;
