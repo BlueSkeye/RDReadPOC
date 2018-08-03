@@ -25,5 +25,8 @@ namespace RawDiskReadPOC.NTFS
         internal static readonly uint RcrdRecordMarker = 0x44524352;
         /// <summary>RSTR in $LogFile/$DATA. log restart page.</summary>
         internal static readonly uint RstrRecordMarker = 0x52545352;
+        internal const byte SID_REVISION = 1; /* Current revision level. */
+        internal const int SID_MAX_SUB_AUTHORITIES = 15;    /* Maximum number of those. */
+        internal const int SID_RECOMMENDED_SUB_AUTHORITIES = 1;	/* Will change to around 6 in a future revision. */
     }
 }

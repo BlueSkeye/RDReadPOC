@@ -40,8 +40,8 @@ namespace RawDiskReadPOC.NTFS
             try {
                 // Note : We could also use the NtfsWellKnownMetadataFiles.Extend entry to
                 // locate the directory, then find the $UsnJrnl entry directly from there.
-                string fileName = @"$Extend\$UsnJrnl";
-                NtfsIndexEntryHeader* fileDescriptor = partition.FindFile(fileName);
+                string fileName = @"$UsnJrnl";
+                NtfsIndexEntryHeader* fileDescriptor = partition.FindFile(fileName, NtfsWellKnownMetadataFiles.Extend);
                 if (null == fileDescriptor) {
                     throw new System.IO.FileNotFoundException(fileName);
                 }

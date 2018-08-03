@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Text;
 
 namespace RawDiskReadPOC.NTFS
@@ -30,55 +31,114 @@ namespace RawDiskReadPOC.NTFS
     /// - There are many named streams.</remarks>
     internal struct NtfsAttributeListAttribute
     {
-        /// <summary>Returns attribute name or a null reference if the name is undefined.</summary>
-        internal unsafe string Name
+        internal unsafe delegate bool EntryEnumeratorCallbackDelegate(ListEntry* entry);
+
+        /// <summary></summary>
+        /// <param name="from"></param>
+        /// <returns></returns>
+        /// <remarks>WARNING : This might seems counterintuitive to have this method at a class level instead
+        /// of making it an instance one. This is because we absolutely don't want it to be invoked on an
+        /// object reference that is subject to being moved in memory by the GC. Forsing the caller to provide
+        /// a pointer makes her responsible for enforcing the pinning requirements.</remarks>
+        internal static unsafe void EnumerateEntries(NtfsAttribute* from, EntryEnumeratorCallbackDelegate callback)
         {
-            get
-            {
-                if (0 == NameLength) { return null; }
-                fixed (NtfsAttributeListAttribute* ptr = &this) {
-                    return Encoding.Unicode.GetString((byte*)ptr + NameOffset, sizeof(char) * NameLength);
+            if (null == from) {
+                throw new ArgumentNullException();
+            }
+            if (NtfsAttributeType.AttributeAttributeList != from->AttributeType) {
+                throw new ArgumentException();
+            }
+            IPartitionClusterData disposableData = null;
+            ListEntry* listBase = null;
+            uint listLength;
+            try {
+                if (from->IsResident) {
+                    NtfsResidentAttribute* listAttribute = (NtfsResidentAttribute*)from;
+                    listBase = (ListEntry*)((byte*)from + listAttribute->ValueOffset);
+                    listLength = listAttribute->ValueLength;
+                }
+                else {
+                    NtfsNonResidentAttribute* listAttribute = (NtfsNonResidentAttribute*)from;
+                    disposableData = listAttribute->GetData();
+                    if (null == disposableData) {
+                        throw new ApplicationException();
+                    }
+                    listBase = (ListEntry*)disposableData.Data;
+                    ulong candidateLength = listAttribute->DataSize;
+                    if (uint.MaxValue < candidateLength) {
+                        throw new ApplicationException();
+                    }
+                    listLength = (uint)candidateLength;
+                }
+                if (null == listBase) {
+                    throw new ApplicationException();
+                }
+                uint offset = 0;
+                while (offset < listLength) {
+                    ListEntry* entry = (ListEntry*)((byte*)listBase + offset);
+                    if (!callback(entry)) {
+                        return;
+                    }
+                    offset += entry->EntryLength;
                 }
             }
-        }
-
-        internal unsafe void BinaryDump()
-        {
-            fixed(NtfsAttributeListAttribute* ptr = &this) {
-                Helpers.BinaryDump((byte*)ptr, this.EntryLength);
+            finally {
+                if (null != disposableData) { disposableData.Dispose(); }
             }
         }
 
-        internal void Dump()
+        internal struct ListEntry
         {
-            Console.WriteLine("T:{0}, L:{1}, VCN:0x{2:X8}, FRN:0x{3:X8}, #{4} ({5})",
-                AttributeType, EntryLength, LowVcn, FileReferenceNumber,
-                AttributeNumber, Name);
-        }
+            /// <summary>Returns attribute name or a null reference if the name is undefined.</summary>
+            internal unsafe string Name
+            {
+                get
+                {
+                    if (0 == NameLength) { return null; }
+                    fixed (ListEntry* ptr = &this) {
+                        return Encoding.Unicode.GetString((byte*)ptr + NameOffset, sizeof(char) * NameLength);
+                    }
+                }
+            }
 
-        /// <summary>Type of referenced attribute.</summary>
-        internal NtfsAttributeType AttributeType;
-        /// <summary>Byte size of this entry (8-byte aligned).</summary>
-        internal ushort EntryLength;
-        /// <summary>Size in Unicode chars of the name of the attribute or 0 if unnamed.</summary>
-        internal byte NameLength;
-        /// <summary>Byte offset to beginning of attribute name (always set this to where
-        /// the name would start even if unnamed).</summary>
-        internal byte NameOffset;
-        /// <summary>Lowest virtual cluster number of this portion of the attribute value.
-        /// This is usually 0. It is non-zero for the case where one attribute does not fit
-        /// into one mft record and thus several mft records are allocated to hold this
-        /// attribute.In the latter case, each mft record holds one extent of the attribute
-        /// and there is one attribute list entry for each extent.
-        /// NOTE: This is DEFINITELY a signed value! The windows driver uses cmp, followed
-        /// by jg when comparing this, thus it treats it as signed.</summary>
-        internal ulong LowVcn;
-        /// <summary>The reference of the mft record holding the <see cref="NtfsAttribute"/>
-        /// for this portion of the attribute value.</summary>
-        internal ulong FileReferenceNumber;
-        /// <summary>If lowest_vcn = 0, the instance of the attribute being referenced;
-        /// otherwise 0.</summary>
-        internal ushort AttributeNumber;
-        // The name if any starts here. 
+            internal unsafe void BinaryDump()
+            {
+                fixed (ListEntry* ptr = &this) {
+                    Helpers.BinaryDump((byte*)ptr, this.EntryLength);
+                }
+            }
+
+            internal void Dump()
+            {
+                Console.WriteLine("T:{0}, L:{1}, VCN:0x{2:X8}, FRN:0x{3:X8}, #{4} ({5})",
+                    AttributeType, EntryLength, LowVcn, FileReferenceNumber,
+                    AttributeNumber, Name);
+            }
+
+            /// <summary>Type of referenced attribute.</summary>
+            internal NtfsAttributeType AttributeType;
+            /// <summary>Byte size of this entry (8-byte aligned).</summary>
+            internal ushort EntryLength;
+            /// <summary>Size in Unicode chars of the name of the attribute or 0 if unnamed.</summary>
+            internal byte NameLength;
+            /// <summary>Byte offset to beginning of attribute name (always set this to where
+            /// the name would start even if unnamed).</summary>
+            internal byte NameOffset;
+            /// <summary>Lowest virtual cluster number of this portion of the attribute value.
+            /// This is usually 0. It is non-zero for the case where one attribute does not fit
+            /// into one mft record and thus several mft records are allocated to hold this
+            /// attribute.In the latter case, each mft record holds one extent of the attribute
+            /// and there is one attribute list entry for each extent.
+            /// NOTE: This is DEFINITELY a signed value! The windows driver uses cmp, followed
+            /// by jg when comparing this, thus it treats it as signed.</summary>
+            internal ulong LowVcn;
+            /// <summary>The reference of the mft record holding the <see cref="NtfsAttribute"/>
+            /// for this portion of the attribute value.</summary>
+            internal ulong FileReferenceNumber;
+            /// <summary>If lowest_vcn = 0, the instance of the attribute being referenced;
+            /// otherwise 0.</summary>
+            internal ushort AttributeNumber;
+            // The name if any starts here.
+        }
     }
 }

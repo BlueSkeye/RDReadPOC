@@ -120,8 +120,14 @@ namespace RawDiskReadPOC.NTFS
                 currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
             }
             if (null != pendingAttributeList) {
-                pendingAttributeList->BinaryDump();
-                pendingAttributeList->Dump();
+                uint entriesCount = 0;
+                NtfsAttributeListAttribute.EnumerateEntries((NtfsAttribute*)pendingAttributeList,
+                    delegate (NtfsAttributeListAttribute.ListEntry* entry) {
+                        entry->Dump();
+                        entriesCount++;
+                        return true;
+                    });
+                Console.WriteLine("{0} attributes in list.", entriesCount);
                 throw new NotImplementedException();
             }
             return;

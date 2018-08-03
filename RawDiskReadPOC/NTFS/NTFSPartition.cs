@@ -210,7 +210,7 @@ namespace RawDiskReadPOC.NTFS
                     throw new ApplicationException();
                 }
                 bool badClusterFound = false;
-                using (IClusterStream stream = nrDataAttribute->OpenDataClusterStream()) {
+                using (IClusterStream stream = (IClusterStream)nrDataAttribute->OpenDataClusterStream()) {
                     while(true) {
                         stream.SeekToNextNonEmptyCluster();
                         long position = ((Stream)stream).Position;
@@ -334,7 +334,6 @@ namespace RawDiskReadPOC.NTFS
                     return true;
                 });
             }
-            ulong currentRecordLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.Root];
             clusterData = null;
             NtfsRecord* result = null;
             try {
@@ -355,7 +354,7 @@ namespace RawDiskReadPOC.NTFS
                 ulong indexAllocationVCN = ulong.MaxValue;
                 NtfsIndexEntryHeader* match = null;
                 rootIndexAttribute->EnumerateIndexEntries(delegate (NtfsIndexEntryHeader* scannedEntry) {
-                    string candidateName = ((NtfsFilenameIndexEntry*)scannedEntry)->Name;
+                    string candidateName = ((NtfsIndexedFileNameAttribute*)scannedEntry)->Name;
                     bool lastEntry = scannedEntry->LastIndexEntry;
                     if (lastEntry) {
                         indexAllocationVCN = scannedEntry->ChildNodeVCN;
@@ -411,7 +410,7 @@ namespace RawDiskReadPOC.NTFS
                     indexAllocationAttributeHeader->Dump();
                 }
                 // Get attribute content and scaan 
-                using (IClusterStream dataStream = indexAllocationAttributeHeader->OpenDataClusterStream()) {
+                using (IClusterStream dataStream = (IClusterStream)indexAllocationAttributeHeader->OpenDataClusterStream()) {
                     IPartitionClusterData rawData = null;
                     // TODO : Change this. We should be able to seek along the data stream without reading
                     // previous clusters.
@@ -468,7 +467,8 @@ namespace RawDiskReadPOC.NTFS
         /// <param name="partitionPath">A path without the drive letter. The leading antislash is optional.
         /// </param>
         /// <returns>An <see cref="NtfsRecord"/> for the file or a null reference if not found.</returns>
-        internal unsafe NtfsIndexEntryHeader* FindFile(string partitionPath)
+        internal unsafe NtfsIndexEntryHeader* FindFile(string partitionPath,
+            NtfsWellKnownMetadataFiles fromMetadatFile = NtfsWellKnownMetadataFiles.Root)
         {
             if (string.IsNullOrEmpty(partitionPath)) {
                 throw new ArgumentNullException();
@@ -484,10 +484,10 @@ namespace RawDiskReadPOC.NTFS
             string[] pathItems = partitionPath.Split(PathSeparator);
             int itemsCount = pathItems.Length;
             int directoriesCount = pathItems.Length - 1;
+            ulong currentRecordLBA = _metadataFileLBAs[(int)fromMetadatFile];
             IPartitionClusterData clusterData = null;
             IPartitionClusterData previousClusterData = null;
             NtfsFileRecord* currentRecord = null;
-            ulong currentRecordLBA = _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.Root];
             // Read the root record.
             clusterData = ReadSectors(currentRecordLBA, SectorsPerCluster);
             if (null == clusterData) {
@@ -526,6 +526,11 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe IPartitionClusterData GetCluster(ulong clusterNumber)
         {
             return ReadSectors(clusterNumber * SectorsPerCluster, SectorsPerCluster);
+        }
+
+        internal IPartitionClusterData GetBuffer(uint minimumSize = 0)
+        {
+            return GetClusterBufferChain(minimumSize);
         }
 
         protected override IPartitionClusterData GetClusterBufferChain(uint minimumSize = 0)

@@ -2,15 +2,16 @@
 
 namespace RawDiskReadPOC.NTFS.Indexing
 {
-    /// <summary></summary>
-    internal struct NtfsFilenameIndexEntry
+    /* $I30 index in directories. */
+    internal struct NtfsIndexedFileNameAttribute
     {
         internal unsafe string Name
         {
             get
             {
-                if (0 < Header.EntryLength) {
-                    fixed (NtfsFilenameIndexEntry* pEntry = &this) {
+                if (0 < Header.EntryLength)
+                {
+                    fixed (NtfsIndexedFileNameAttribute* pEntry = &this) {
                         NtfsFileNameAttribute* pFileName =
                             (NtfsFileNameAttribute*)((byte*)pEntry + sizeof(NtfsIndexEntryHeader));
                         return pFileName->GetName();
@@ -22,7 +23,7 @@ namespace RawDiskReadPOC.NTFS.Indexing
 
         internal unsafe void BinaryDump()
         {
-            fixed (NtfsFilenameIndexEntry* rawData = &this) {
+            fixed (NtfsIndexedFileNameAttribute* rawData = &this) {
                 Helpers.BinaryDump((byte*)rawData, rawData->Header.EntryLength);
             }
         }
@@ -34,5 +35,9 @@ namespace RawDiskReadPOC.NTFS.Indexing
         }
 
         internal NtfsIndexEntryHeader Header;
+        /// <summary>The key of the indexed attribute. NOTE: Only present if INDEX_ENTRY_END
+        /// bit in flags is not set. NOTE: On NTFS versions before 3.0 the only valid key is
+        /// the FILENAME_ATTR.</summary>
+        internal NtfsFileNameAttribute Filename;
     }
 }

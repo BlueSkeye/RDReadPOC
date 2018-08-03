@@ -26,6 +26,18 @@ namespace RawDiskReadPOC.NTFS
                 ValueLength, ValueOffset, Flags);
         }
 
+        /// <summary></summary>
+        /// <param name="attribute"></param>
+        /// <returns></returns>
+        /// <remarks>WARNING : This might seems counterintuitive to have this method at a class level instead
+        /// of making it an instance one. This is because we absolutely don't want it to be invoked on an
+        /// object reference that is subject to being moved in memory by the GC. Forsing the caller to provide
+        /// a pointer makes her responsible for enforcing the pinning requirements.</remarks>
+        internal static unsafe IPartitionClusterData GetData(NtfsResidentAttribute* attribute)
+        {
+            return new ResidentData((byte*)attribute + attribute->ValueOffset, attribute->ValueLength);
+        }
+
         /// <summary>WARNING, the caller must also fix the structure before invoking this function and
         /// keep it fixed all along while using the returned value.</summary>
         /// <returns></returns>
@@ -52,7 +64,7 @@ namespace RawDiskReadPOC.NTFS
         internal NtfsAttribute Header;
         /// <summary>Byte size of attribute value.</summary>
         internal uint ValueLength;
-        /// <summary>Byte offset of the attribute value from the start of the attribute record.When
+        /// <summary>Byte offset of the attribute value from the start of the attribute record .When
         /// creating, align to 8-byte boundary if we have a name present as this might not have a
         /// length of a multiple of 8-bytes.</summary>
         internal ushort ValueOffset;
@@ -68,6 +80,44 @@ namespace RawDiskReadPOC.NTFS
             /// <summary>Attribute is referenced in an index (has implications for deleting and
             /// modifying the attribute).</summary>
             IsIndexed = 0x01,
+        }
+
+        private class ResidentData : IPartitionClusterData
+        {
+            internal unsafe ResidentData(byte* data, uint dataSize)
+            {
+                _data = data;
+                _dataSize = dataSize;
+            }
+
+            public unsafe byte* Data => _data;
+
+            public uint DataSize => _dataSize;
+
+            public IPartitionClusterData NextInChain => null;
+
+            public unsafe void BinaryDump()
+            {
+                Helpers.BinaryDump(_data, _dataSize);
+            }
+
+            public void BinaryDumpChain()
+            {
+                BinaryDump();
+            }
+
+            public void Dispose()
+            {
+                return;
+            }
+
+            public IPartitionClusterData Zeroize()
+            {
+                throw new NotSupportedException();
+            }
+
+            private unsafe byte* _data;
+            private uint _dataSize;
         }
 
         private class ResidentDataStream : Stream

@@ -110,6 +110,34 @@ namespace RawDiskReadPOC.NTFS
             return;
         }
 
+        internal unsafe IPartitionClusterData GetData()
+        {
+            using (Stream input = OpenDataClusterStream()) {
+                NonResidentDataStream dataStream = (NonResidentDataStream)input;
+                long length = dataStream.Length;
+                if (uint.MaxValue < length) {
+                    throw new ApplicationException();
+                }
+                IPartitionClusterData result = NtfsPartition.Current.GetBuffer((uint)length);
+                byte* rawResult = result.Data;
+                IPartitionClusterData inputData;
+                while (null != (inputData = ((IClusterStream)dataStream).ReadNextCluster())) {
+                    try {
+                        uint inputDataLength = inputData.DataSize;
+                        if (int.MaxValue < inputDataLength) {
+                            throw new ApplicationException();
+                        }
+                        Helpers.Memcpy(inputData.Data, rawResult, (int)inputDataLength);
+                        rawResult += inputDataLength;
+                    }
+                    finally {
+                        inputData.Dispose();
+                    }
+                }
+                return result;
+            }
+        }
+
         /// <summary>Open a data stream on the data part of this attribute.</summary>
         /// <param name="chunks">Optional parameter.</param>
         /// <returns></returns>
@@ -125,7 +153,7 @@ namespace RawDiskReadPOC.NTFS
         /// <summary>Open a data stream on the data part of this attribute.</summary>
         /// <param name="chunks">Optional parameter.</param>
         /// <returns></returns>
-        internal IClusterStream OpenDataClusterStream(List<LogicalChunk> chunks = null)
+        internal Stream OpenDataClusterStream(List<LogicalChunk> chunks = null)
         {
             if (0 != this.CompressionUnit) {
                 throw new NotSupportedException("Compressed streams not supported.");

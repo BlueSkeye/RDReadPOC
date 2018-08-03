@@ -3,7 +3,10 @@ using System.Runtime.InteropServices;
 
 namespace RawDiskReadPOC.NTFS.Indexing
 {
-    /// <summary></summary>
+    /// <summary>This is an index entry. A sequence of such entries follows each INDEX_HEADER
+    /// structure.Together they make up a complete index. The index follows either an index
+    /// root attribute or an index allocation attribute.
+    /// NOTE: Before NTFS 3.0 only filename attributes were indexed.</summary>
     /// <remarks>Until NTFS version 3.0, only filename attributes were indexed. If the HasTrailingVcn
     /// flag of a DIRECTORY_ENTRY structure is set, the last eight bytes of the directory entry
     /// contain the VCN of the index block that holds the entries immediately preceding the current
@@ -89,7 +92,11 @@ namespace RawDiskReadPOC.NTFS.Indexing
         [Flags()]
         internal enum EntryFlags : ushort
         {
+            /// <summary>This entry contains a sub-node, i.e. a reference to an index
+            /// block in form of a virtual cluster number(see below).</summary>
             HasTrailingVCN = 1,
+            /// <summary>This signifies the last entry in an index block. The index entry
+            /// does not represent a file but it can point to a sub-node.</summary>
             LastIndexInNode = 2
         }
     }

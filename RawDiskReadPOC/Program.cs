@@ -95,7 +95,7 @@ namespace RawDiskReadPOC
 
                     // Dump bad clusters.
                     ntfsPartition.DumpBadClusters();
-                    
+
                     // Dump UsnJournal
                     new NtfsUsnJournalReader(ntfsPartition).Run();
                     
@@ -110,12 +110,16 @@ namespace RawDiskReadPOC
                         throw new System.IO.FileNotFoundException(fileName);
                     }
                     IPartitionClusterData fileData = null;
-                    NtfsFileRecord* fileRecord =
+                    NtfsFileRecord* usnJournalFileRecord =
                         ntfsPartition.GetFileRecord(fileDescriptor->FileReference, out fileData);
-                    if ((null == fileRecord) || (null == fileData)) {
+                    if ((null == usnJournalFileRecord) || (null == fileData)) {
                         throw new ApplicationException();
                     }
                     try {
+                        usnJournalFileRecord->EnumerateRecordAttributes(delegate (NtfsAttribute* attribute) {
+                            attribute->Dump();
+                            return true;
+                        });
                         // For debugging purpose.
                         // fileRecord->BinaryDumpContent();
 
