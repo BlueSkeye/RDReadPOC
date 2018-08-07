@@ -75,7 +75,9 @@ namespace RawDiskReadPOC.NTFS
         }
 
         internal unsafe void EnumerateRecordAttributes(NtfsPartition owner, ulong recordLBA,
-            ref byte* buffer, RecordAttributeEnumeratorCallbackDelegate callback)
+            ref byte* buffer, RecordAttributeEnumeratorCallbackDelegate callback,
+            NtfsAttributeType searchedType = NtfsAttributeType.Unused,
+            AttributeNameFilterDelegate nameFilter = null)
         {
             using (IPartitionClusterData data = owner.ReadSectors(recordLBA)) {
                 buffer = data.Data;
@@ -84,23 +86,38 @@ namespace RawDiskReadPOC.NTFS
                 if (1024 < header->BytesAllocated) {
                     throw new NotImplementedException();
                 }
-                EnumerateRecordAttributes(header, callback);
+                EnumerateRecordAttributes(header, callback, searchedType, nameFilter);
             }
         }
 
-        internal unsafe void EnumerateRecordAttributes(RecordAttributeEnumeratorCallbackDelegate callback)
+        internal unsafe void EnumerateRecordAttributes(RecordAttributeEnumeratorCallbackDelegate callback,
+            NtfsAttributeType searchedType = NtfsAttributeType.Unused, AttributeNameFilterDelegate nameFilter = null)
         {
             fixed (NtfsFileRecord* header = &this) {
-                EnumerateRecordAttributes(header, callback);
+                EnumerateRecordAttributes(header, callback, searchedType, nameFilter);
             }
         }
 
+        internal unsafe delegate bool AttributeNameFilterDelegate(NtfsAttribute* candidate);
+
+        /// <summary>Enumerate attributes bound to this <see cref="NtfsFileRecord"/>, optionally filtering
+        /// on attribute name.</summary>
+        /// <param name="header">The file record.</param>
+        /// <param name="callback"></param>
+        /// <param name="searchedAttributeType"></param>
+        /// <param name="nameFilter">An optional name filter that will be provided with the basic attribute
+        /// properties (including name) in order to decide if data should be retrieved. This is especially
+        /// usefull for <see cref="NtfsAttributeListAttribute"/> attributes that may reference lengthy
+        /// attributes data which are expensive to retrieve.</param>
         internal static unsafe void EnumerateRecordAttributes(NtfsFileRecord* header,
-            RecordAttributeEnumeratorCallbackDelegate callback)
+            RecordAttributeEnumeratorCallbackDelegate callback, NtfsAttributeType searchedAttributeType,
+            AttributeNameFilterDelegate nameFilter)
         {
             // Walk attributes, seeking for the searched one.
             NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
             NtfsAttributeListAttribute* pendingAttributeList = null;
+            NtfsAttribute*[] candidates = new NtfsAttribute*[MaxAttributeCount];
+            int candidatesCount = 0;
             for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
                 if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
                 if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
@@ -109,27 +126,100 @@ namespace RawDiskReadPOC.NTFS
                 // complete the enumeration.
                 if (NtfsAttributeType.AttributeAttributeList == currentAttribute->AttributeType) {
                     if (null != pendingAttributeList) {
+                        // No more than one attribute of this kind per file record.
                         throw new ApplicationException();
+                    }
+                    if (NtfsAttributeType.AttributeAttributeList == searchedAttributeType) {
+                        if (!callback(currentAttribute)) { return; }
                     }
                     // Defer handling
                     pendingAttributeList = (NtfsAttributeListAttribute*)currentAttribute;
+                    break;
                 }
-                else {
-                    if (!callback(currentAttribute)) { return; }
+                if (candidatesCount >= MaxAttributeCount) {
+                    throw new ApplicationException();
+                }
+                if ((NtfsAttributeType.Unused == searchedAttributeType)
+                    || (currentAttribute->AttributeType == searchedAttributeType))
+                {
+                    candidates[candidatesCount++] = currentAttribute;
                 }
                 currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
             }
-            if (null != pendingAttributeList) {
-                uint entriesCount = 0;
-                NtfsAttributeListAttribute.EnumerateEntries((NtfsAttribute*)pendingAttributeList,
-                    delegate (NtfsAttributeListAttribute.ListEntry* entry) {
-                        entry->Dump();
-                        entriesCount++;
-                        return true;
-                    });
-                Console.WriteLine("{0} attributes in list.", entriesCount);
-                throw new NotImplementedException();
+            if (NtfsAttributeType.AttributeAttributeList == searchedAttributeType) {
+                // Either we already found one such attribute and invoked the callback or found none and
+                // we can return immediately. Should we have found several such attributes we would have
+                // risen an exception.
+                return;
             }
+            if (null == pendingAttributeList) {
+                // We already walked every attributes and captured those that matched the type filter if
+                // any. Invoke callbak on each such attribute.
+                for(int candidateIndex = 0; candidateIndex < candidatesCount; candidateIndex++) {
+                    if (!callback(candidates[candidateIndex])) { return; }
+                }
+                // We are done.
+                return;
+            }
+            // We have an attribute list attribute. Delegate him the enumeration.
+            NtfsPartition currentPartition = NtfsPartition.Current;
+            NtfsAttributeListAttribute.EnumerateEntries((NtfsAttribute*)pendingAttributeList, searchedAttributeType,
+                delegate (NtfsAttributeListAttribute.ListEntry* entry,
+                    out NtfsAttributeListAttribute.EntryDataCallbackDelegate dataRetrievalCallback,
+                    out bool includeFullData)
+                {
+                    if (NtfsAttributeType.Unused != searchedAttributeType) {
+                        if (entry->AttributeType < searchedAttributeType) {
+                            // Our caller narrowed the search to a special kind of attribute. This one doesn't
+                            // match. Bail out and go on with next attribute.
+                            dataRetrievalCallback = null;
+                            includeFullData = false;
+                            return true;
+                        }
+                        if (entry->AttributeType > searchedAttributeType) {
+                            // We can stop here because the list is sorted on attribute type first. Hence, we
+                            // can be sure the searched attribute is NOT present.
+                            dataRetrievalCallback = null;
+                            includeFullData = false;
+                            return false;
+                        }
+                    }
+                    // Either the attribute type match our caller requirements or the caller is attribute
+                    // type agnostic.
+                    includeFullData = (null == nameFilter);
+                    bool retryingWithFullData = false;
+                    // Prepare to receive attribute data;
+                    dataRetrievalCallback = delegate (NtfsAttribute* candidateAttribute,
+                        ref bool includeData, out bool retry)
+                    {
+                        if (retryingWithFullData) {
+                            // Our caller decided she wants the full attribute. We triggered a retry
+                            // and now have the whole attribute data.
+                            includeData = false;
+                            retry = false;
+                            // Delegate the continuation decision to our caller.
+                            return callback(candidateAttribute);
+                        }
+                        if (null != nameFilter) {
+                            if (!nameFilter(candidateAttribute)) {
+                                // The name filter failed. Go on with next entry.
+                                includeData = false;
+                                retry = false;
+                                return true;
+                            }
+                        }
+                        // The caller is interested in the attribute, either because there is no
+                        // name filter. We want the full data.
+                        retryingWithFullData = true;
+                        includeData = true;
+                        retry = true;
+                        // We will land in the conditional block above.                                    return true;
+                        return true;
+                    };
+                    // Hands out the continuation to the enumerator that will callback again either with
+                    // full data or just with the attribute itself.
+                    return true;
+                });
             return;
         }
 
@@ -138,7 +228,8 @@ namespace RawDiskReadPOC.NTFS
         /// <param name="order">Attribute rank. Default is first. This is usefull for some kind of
         /// attributes such as Data one that can appear several times in a record.</param>
         /// <returns></returns>
-        internal unsafe NtfsAttribute* GetAttribute(NtfsAttributeType kind, uint order = 1)
+        internal unsafe NtfsAttribute* GetAttribute(NtfsAttributeType kind, uint order = 1,
+            AttributeNameFilterDelegate nameFilter = null)
         {
             NtfsAttribute* result = null;
             EnumerateRecordAttributes(delegate (NtfsAttribute* found) {
@@ -149,7 +240,8 @@ namespace RawDiskReadPOC.NTFS
                     }
                 }
                 return true;
-            });
+            },
+            kind, nameFilter);
             return result;
         }
 
@@ -161,6 +253,7 @@ namespace RawDiskReadPOC.NTFS
             return (null == attributeHeader) ? null : attributeHeader->GetValue();
         }
 
+        private const int MaxAttributeCount = 1024;
         internal const ulong RECORD_SIZE = 1024;
         /// <summary>An NTFS_RECORD_HEADER structure with a Type of ‘FILE’.</summary>
         internal NtfsRecord Ntfs;

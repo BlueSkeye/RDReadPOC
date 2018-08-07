@@ -102,6 +102,7 @@
     <Compile Include="NTFS\RecordAttributeEnumeratorCallbackDelegate.cs" />
     <Compile Include="NTFS\ReparsePointAttribute.cs" />
     <Compile Include="NTFS\SID.cs" />
+    <Compile Include="PartitionDataDisposableBatch.cs" />
     <Compile Include="PartitionManager.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

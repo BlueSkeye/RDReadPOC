@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
@@ -31,18 +32,51 @@ namespace RawDiskReadPOC.NTFS
     /// - There are many named streams.</remarks>
     internal struct NtfsAttributeListAttribute
     {
-        internal unsafe delegate bool EntryEnumeratorCallbackDelegate(ListEntry* entry);
+        /// <summary>A delegate to be invoked for attribute data retrieval during the attribute
+        /// enumeration process.</summary>
+        /// <param name="attribute">The attribute (with data) to be handled. The data includes either just
+        /// the header or full data depending on the value of the input value of includeData parameter.</param>
+        /// <param name="includeData"></param>
+        /// <param name="retry">On return, if this value is true, the same delegate will be invoked again
+        /// for the same attribute. This is usefull for anattribute that may have a lot of data, such as
+        /// the $J attribute of the $UsnJrnl where the method invoking the enumeration wants to quickly
+        /// find the relevant attribute just using attribute header data, then once found have a closer
+        /// look at the attribute data. This can be easily performed by being called back with just the
+        /// attribute header first, then setting the retry parameter and switching the includeData
+        /// parameter from false to true.</param>
+        /// <returns>True if enumeration should continue, false otherwise.</returns>
+        internal unsafe delegate bool EntryDataCallbackDelegate(NtfsAttribute* attribute, ref bool includeData,
+            out bool retry);
 
-        /// <summary></summary>
-        /// <param name="from"></param>
+        /// <summary>The delegate to be invoked by the entry enumerator method.</summary>
+        /// <param name="entry">An enumerated entry. Each attribute will be enumerated once only, even
+        /// if it span several entries. The enumeration will occur on entry having LowVcn = 0.</param>
+        /// <param name="dataRetrievalCallback">On return, if this parameter is not a null reference, it
+        /// is a delegate to be invoked eirher with the <see cref="NtfsAttribute"/> header only or with
+        /// full attribute data depending on the value of includeFullData</param>
+        /// <param name="includeFullData">The value of this parameter on delegate invocation return is
+        /// meaningfull iif the dataRetrievalCallback is not a null reference. This boolean value is true
+        /// if the dataRetrievalCallback is to be invoked with full attribute data. Otherwise the only
+        /// the attribute header part will be provided.</param>
         /// <returns></returns>
-        /// <remarks>WARNING : This might seems counterintuitive to have this method at a class level instead
-        /// of making it an instance one. This is because we absolutely don't want it to be invoked on an
-        /// object reference that is subject to being moved in memory by the GC. Forsing the caller to provide
-        /// a pointer makes her responsible for enforcing the pinning requirements.</remarks>
-        internal static unsafe void EnumerateEntries(NtfsAttribute* from, EntryEnumeratorCallbackDelegate callback)
+        internal unsafe delegate bool EntryEnumeratorCallbackDelegate(ListEntry* entry,
+            out EntryDataCallbackDelegate dataRetrievalCallback, out bool includeFullData);
+
+        internal static unsafe void BinaryDump(NtfsAttribute* from)
         {
-            if (null == from) {
+            _Dump(from, delegate (ListEntry* entry) { entry->BinaryDump(); });
+        }
+
+        internal static unsafe void Dump(NtfsAttribute* from)
+        {
+            _Dump(from, delegate(ListEntry* entry) { entry->Dump(); });
+        }
+
+        private unsafe delegate void DumpCallbackDelegate(ListEntry* entry);
+
+        private static unsafe void _Dump(NtfsAttribute* from, DumpCallbackDelegate callback)
+        {
+            if(null == from) {
                 throw new ArgumentNullException();
             }
             if (NtfsAttributeType.AttributeAttributeList != from->AttributeType) {
@@ -76,15 +110,156 @@ namespace RawDiskReadPOC.NTFS
                 uint offset = 0;
                 while (offset < listLength) {
                     ListEntry* entry = (ListEntry*)((byte*)listBase + offset);
-                    if (!callback(entry)) {
-                        return;
-                    }
+                    entry->Dump();
                     offset += entry->EntryLength;
                 }
             }
             finally {
                 if (null != disposableData) { disposableData.Dispose(); }
             }
+        }
+
+        /// <summary></summary>
+        /// <param name="from">The NtfsAttributeListAttribute to be used for enumeration.</param>
+        /// <remarks>WARNING : This might seems counterintuitive to have this method at a class level instead
+        /// of making it an instance one. This is because we absolutely don't want it to be invoked on an
+        /// object reference that is subject to being moved in memory by the GC. Forsing the caller to provide
+        /// a pointer makes her responsible for enforcing the pinning requirements.</remarks>
+        internal static unsafe void EnumerateEntries(NtfsAttribute* from,
+            NtfsAttributeType searchedAttributeType, EntryEnumeratorCallbackDelegate callback)
+        {
+            if (null == from) {
+                throw new ArgumentNullException();
+            }
+            if (NtfsAttributeType.AttributeAttributeList != from->AttributeType) {
+                throw new ArgumentException();
+            }
+            IPartitionClusterData listAttributeData = null;
+            ListEntry* listBase = null;
+            uint listLength;
+            try {
+                if (from->IsResident) {
+                    NtfsResidentAttribute* listAttribute = (NtfsResidentAttribute*)from;
+                    listBase = (ListEntry*)((byte*)from + listAttribute->ValueOffset);
+                    listLength = listAttribute->ValueLength;
+                }
+                else {
+                    NtfsNonResidentAttribute* listAttribute = (NtfsNonResidentAttribute*)from;
+                    listAttributeData = listAttribute->GetData();
+                    if (null == listAttributeData) {
+                        throw new ApplicationException();
+                    }
+                    listBase = (ListEntry*)listAttributeData.Data;
+                    ulong candidateLength = listAttribute->DataSize;
+                    if (uint.MaxValue < candidateLength) {
+                        throw new ApplicationException();
+                    }
+                    listLength = (uint)candidateLength;
+                }
+                if (null == listBase) {
+                    throw new ApplicationException();
+                }
+                uint offset = 0;
+                NtfsAttributeType currentAttributeType = NtfsAttributeType.Unused;
+                ushort currentAttributeNumber = ushort.MaxValue;
+                while (offset < listLength) {
+                    ListEntry* entry = (ListEntry*)((byte*)listBase + offset);
+                    if ((currentAttributeNumber != entry->AttributeNumber)
+                        || (currentAttributeType != entry->AttributeType))
+                    {
+                        currentAttributeNumber = entry->AttributeNumber;
+                        currentAttributeType = entry->AttributeType;
+                        if ((NtfsAttributeType.Unused == searchedAttributeType)
+                            || (entry->AttributeType == searchedAttributeType))
+                        {
+                            EntryDataCallbackDelegate dataRetriever;
+                            bool includeData;
+                            if (!callback(entry, out dataRetriever, out includeData)) {
+                                return;
+                            }
+                            if (null != dataRetriever) {
+                                // The last callback invocation decided it needs some more data before deciding
+                                // what to do.
+                                NtfsAttribute* retrievedAttribute = null;
+                                bool dataIncluded = includeData;
+                                bool retry;
+                                IPartitionClusterData clusterData = null;
+                                NtfsPartition currentPartition = NtfsPartition.Current;
+
+                                try {
+                                    while(true) {
+                                        if (null == retrievedAttribute) {
+                                            uint sectorsCount;
+                                            List<ulong> entries = new List<ulong>();
+                                            if (!includeData) {
+                                                sectorsCount = currentPartition.SectorsPerCluster;
+                                            }
+                                            else {
+                                                // Read each record and prepare for data retrieval
+                                                uint lastValidOffset;
+                                                while (true) {
+                                                    entries.Add(entry->FileReferenceNumber);
+                                                    lastValidOffset = offset;
+                                                    offset += entry->EntryLength;
+                                                    entry = (ListEntry*)((byte*)listBase + offset);
+                                                    if ((currentAttributeNumber != entry->AttributeNumber)
+                                                        || (currentAttributeType != entry->AttributeType))
+                                                    {
+                                                        break;
+                                                    }
+                                                }
+                                                offset = lastValidOffset;
+                                                entry = (ListEntry*)((byte*)listBase + offset);
+                                            }
+                                            // Read each record into the pool allocated zone
+                                            int entriesCount = entries.Count;
+                                            int clusterSize = (int)(currentPartition.SectorsPerCluster *
+                                                currentPartition.BytesPerSector);
+                                            clusterData = currentPartition.GetBuffer((uint)(clusterSize * entriesCount));
+                                            if (null == clusterData) {
+                                                throw new ApplicationException();
+                                            }
+                                            long currentOffset = 0;
+                                            for (int index = 0; index < entriesCount; index++) {
+                                                currentPartition.GetCluster(clusterData, currentOffset,
+                                                    entry->FileReferenceNumber & 0x0000FFFFFFFFFFFF);
+                                                currentOffset += clusterSize;
+                                            }
+                                            retrievedAttribute = (NtfsAttribute*)clusterData.Data;
+                                            retrievedAttribute->BinaryDump();
+                                            retrievedAttribute->Dump();
+                                        }
+                                        if (!dataRetriever(retrievedAttribute, ref includeData, out retry)) {
+                                            return;
+                                        }
+                                        if (!retry) { break; }
+                                        if (includeData && !dataIncluded) {
+                                            // Force another retrieval.
+                                            if(null != clusterData) {
+                                                clusterData.Dispose();
+                                                clusterData = null;
+                                            }
+                                            retrievedAttribute = null;
+                                        }
+                                    }
+                                }
+                                finally {
+                                    if (null != clusterData) { clusterData.Dispose(); }
+                                }
+                            }
+                        }
+                    }
+                    offset += entry->EntryLength;
+                }
+            }
+            finally {
+                if (null != listAttributeData) { listAttributeData.Dispose(); }
+            }
+        }
+
+        internal void GetEnumeratedEntryData()
+        {
+            throw new NotImplementedException();
         }
 
         internal struct ListEntry
@@ -127,7 +302,7 @@ namespace RawDiskReadPOC.NTFS
             /// <summary>Lowest virtual cluster number of this portion of the attribute value.
             /// This is usually 0. It is non-zero for the case where one attribute does not fit
             /// into one mft record and thus several mft records are allocated to hold this
-            /// attribute.In the latter case, each mft record holds one extent of the attribute
+            /// attribute. In the latter case, each mft record holds one extent of the attribute
             /// and there is one attribute list entry for each extent.
             /// NOTE: This is DEFINITELY a signed value! The windows driver uses cmp, followed
             /// by jg when comparing this, thus it treats it as signed.</summary>

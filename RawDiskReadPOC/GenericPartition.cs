@@ -78,7 +78,66 @@ namespace RawDiskReadPOC
 
         protected abstract IPartitionClusterData GetClusterBufferChain(uint size = 0);
         
-        /// <summary>Read a some number of sectors.</summary>
+        /// <summary>Read some number of sectors.</summary>
+        /// <param name="into">Pre-allocated buffer.</param>
+        /// <param name="logicalSectorId">Logical identifier of the first sector to be read.</param>
+        /// <param name="sectorsCount">Number of sectors to read.</param>
+        /// <returns>Buffer address.</returns>
+        internal unsafe IPartitionClusterData ReadSectors(IPartitionClusterData into, long atOffset,
+            ulong logicalSectorId, uint sectorsCount = 1)
+        {
+            uint bytesPerSector = PartitionManager.Singleton.Geometry.BytesPerSector;
+            uint expectedCount = sectorsCount * bytesPerSector;
+            if (null == into) {
+                throw new ArgumentNullException();
+            }
+            if (0 > atOffset) {
+                throw new ArgumentException();
+            }
+            if ((into.DataSize - atOffset) < expectedCount) {
+                throw new ArgumentException();
+            }
+            if (FeaturesContext.DataPoolChecksEnabled) {
+                if (expectedCount > into.DataSize) {
+                    throw new ApplicationException();
+                }
+            }
+            ulong offset = (logicalSectorId + StartSector) * bytesPerSector;
+            uint totalBytesRead = 0;
+            // Prevent concurrent reads on this partition.
+            lock (_ioLock) {
+                if (!Natives.SetFilePointerEx(_handle, (long)offset, out offset, Natives.FILE_BEGIN)) {
+                    int error = Marshal.GetLastWin32Error();
+                    throw new ApplicationException();
+                }
+                uint chainItemsCount = into.GetChainItemsCount();
+                uint chainLength = into.GetChainLength();
+                if (chainLength < expectedCount) {
+                    throw new ApplicationException();
+                }
+                uint remainingExpectation = expectedCount;
+                for (IPartitionClusterData currentData = into; null != currentData; currentData = currentData.NextInChain) {
+                    uint readSize = remainingExpectation;
+                    if (readSize > into.DataSize) {
+                        readSize = into.DataSize;
+                    }
+                    uint effectiveReadSize;
+                    if (!Natives.ReadFile(_handle, into.Data + atOffset, readSize, out effectiveReadSize, IntPtr.Zero)) {
+                        int error = Marshal.GetLastWin32Error();
+                        throw new ApplicationException();
+                    }
+                    atOffset += effectiveReadSize;
+                    totalBytesRead += effectiveReadSize;
+                    remainingExpectation -= effectiveReadSize;
+                }
+            }
+            if (totalBytesRead != expectedCount) {
+                throw new ApplicationException();
+            }
+            return into;
+        }
+        
+        /// <summary>Read some number of sectors.</summary>
         /// <param name="logicalSectorId">Logical identifier of the first sector to be read.</param>
         /// <param name="sectorsCount">Number of sectors to read.</param>
         /// <returns>Buffer address.</returns>
@@ -86,46 +145,7 @@ namespace RawDiskReadPOC
         {
             IPartitionClusterData result = GetClusterBufferChain(sectorsCount * BytesPerSector);
             try {
-                uint bytesPerSector = PartitionManager.Singleton.Geometry.BytesPerSector;
-                uint expectedCount = sectorsCount * bytesPerSector;
-                result = GetClusterBufferChain(expectedCount);
-                if (FeaturesContext.DataPoolChecksEnabled) {
-                    if (expectedCount > result.DataSize) {
-                        throw new ApplicationException();
-                    }
-                }
-                ulong offset = (logicalSectorId + StartSector) * bytesPerSector;
-                uint totalBytesRead = 0;
-                // Prevent concurrent reads on this partition.
-                lock (_ioLock) {
-                    if (!Natives.SetFilePointerEx(_handle, (long)offset, out offset, Natives.FILE_BEGIN)) {
-                        int error = Marshal.GetLastWin32Error();
-                        throw new ApplicationException();
-                    }
-                    uint chainItemsCount = result.GetChainItemsCount();
-                    uint chainLength = result.GetChainLength();
-                    if (chainLength < expectedCount) {
-                        throw new ApplicationException();
-                    }
-                    uint remainingExpectation = expectedCount;
-                    for (IPartitionClusterData currentData = result; null != currentData; currentData = currentData.NextInChain) {
-                        uint readSize = remainingExpectation;
-                        if (readSize > result.DataSize) {
-                            readSize = result.DataSize;
-                        }
-                        uint effectiveReadSize;
-                        if (!Natives.ReadFile(_handle, result.Data, readSize, out effectiveReadSize, IntPtr.Zero)) {
-                            int error = Marshal.GetLastWin32Error();
-                            throw new ApplicationException();
-                        }
-                        totalBytesRead += effectiveReadSize;
-                        remainingExpectation -= effectiveReadSize;
-                    }
-                }
-                if (totalBytesRead != expectedCount) {
-                    throw new ApplicationException();
-                }
-                return result;
+                return ReadSectors(result, 0, logicalSectorId, sectorsCount);
             }
             catch {
                 if (null != result) {

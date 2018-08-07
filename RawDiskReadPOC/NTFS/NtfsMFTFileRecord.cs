@@ -48,11 +48,9 @@ namespace RawDiskReadPOC.NTFS
         {
             NtfsFileRecord.EnumerateRecordAttributes(this.RecordBase,
                 delegate (NtfsAttribute* attribute) {
-                    if (NtfsAttributeType.AttributeAttributeList == attribute->AttributeType) {
-                        throw new AssertionException("$MFT record not expected to contain an attribute list attribute");
-                    }
-                    return true;
-                });
+                    throw new AssertionException("$MFT record not expected to contain an attribute list attribute");
+                },
+                NtfsAttributeType.AttributeAttributeList, null);
         }
 
         internal static unsafe NtfsMFTFileRecord Create(NtfsPartition owner, byte* rawData)

@@ -13,17 +13,6 @@ namespace RawDiskReadPOC
             }
         }
 
-        internal static string Indent(int count)
-        {
-            if (0 > count) {
-                throw new ArgumentOutOfRangeException("count");
-            }
-            if (count >= _Indentations.Length) {
-                throw new ArgumentOutOfRangeException("count");
-            }
-            return _Indentations[count];
-        }
-
         internal static unsafe void BinaryDump(byte* buffer, uint size)
         {
             DumpedAddress = buffer;
@@ -66,6 +55,17 @@ namespace RawDiskReadPOC
                 result += scannedData.DataSize;
             }
             return result;
+        }
+
+        internal static string Indent(int count)
+        {
+            if (0 > count) {
+                throw new ArgumentOutOfRangeException("count");
+            }
+            if (count >= _Indentations.Length) {
+                throw new ArgumentOutOfRangeException("count");
+            }
+            return _Indentations[count];
         }
 
         internal static unsafe void Memcpy(byte* from, byte* to, int length)

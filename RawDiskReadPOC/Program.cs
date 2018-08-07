@@ -111,7 +111,7 @@ namespace RawDiskReadPOC
                     }
                     IPartitionClusterData fileData = null;
                     NtfsFileRecord* usnJournalFileRecord =
-                        ntfsPartition.GetFileRecord(fileDescriptor->FileReference, out fileData);
+                        ntfsPartition.GetFileRecord(fileDescriptor->FileReference, ref fileData);
                     if ((null == usnJournalFileRecord) || (null == fileData)) {
                         throw new ApplicationException();
                     }
