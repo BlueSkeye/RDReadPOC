@@ -100,13 +100,16 @@ namespace RawDiskReadPOC.NTFS
         {
             // Start at $MFT LBA.
             ulong currentRecordLBA = (MFTClusterNumber * SectorsPerCluster);
-            for (int mdfIndex = 0; mdfIndex < 16; mdfIndex++) {
-                _metadataFileLBAs[mdfIndex] = currentRecordLBA;
-                using (IPartitionClusterData clusterData = ReadSectors(currentRecordLBA, SectorsPerCluster)) {
+            using (PartitionDataDisposableBatch batch = PartitionDataDisposableBatch.CreateNew()) {
+                for (int mdfIndex = 0; mdfIndex < 16; mdfIndex++) {
+                    _metadataFileLBAs[mdfIndex] = currentRecordLBA;
+                    // The cluster data is not leaked because it's registered against the current batch.
+                    IPartitionClusterData clusterData = ReadSectors(currentRecordLBA, SectorsPerCluster);
                     byte* currentRecord = clusterData.Data;
                     NtfsFileRecord* header = (NtfsFileRecord*)currentRecord;
                     header->AssertRecordType();
                     header->ApplyFixups();
+                    batch.AssertConsistency();
                     NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
                     // Walk attributes. Technically this is useless. However that let us trace metafile names.
                     for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
@@ -118,7 +121,9 @@ namespace RawDiskReadPOC.NTFS
                             string metadataFileName = Encoding.Unicode.GetString((byte*)&nameAttribute->Name, nameAttribute->NameLength * sizeof(char));
                             if ("$MFT" == metadataFileName) {
                                 // It is not expected for a partition to have more than one $Mft record.
-                                if (null != _mft) { throw new AssertionException("Several $Mft record were found."); }
+                                if (null != _mft) {
+                                    throw new AssertionException("Several $Mft record were found.");
+                                }
                                 _mft = NtfsMFTFileRecord.Create(this, currentRecord);
                             }
                             _metadataFilesLBAByName.Add(metadataFileName, currentRecordLBA);
@@ -130,8 +135,8 @@ namespace RawDiskReadPOC.NTFS
                     }
                     currentRecordLBA += header->BytesAllocated / BytesPerSector;
                 }
+                LoadVCNList();
             }
-            LoadVCNList();
         }
 
         /// <summary>Count files in current partition. We walk the bitmap and find which records are used.
@@ -870,6 +875,7 @@ namespace RawDiskReadPOC.NTFS
         private ulong[] _metadataFileLBAs = new ulong[16];
         private NtfsMFTFileRecord _mft;
         private Dictionary<string, ulong> _metadataFilesLBAByName = new Dictionary<string, ulong>();
+        private bool _nonPooledAllocationDisabled;
         private static List<IntPtr> _partitionClusterDataFreePool = new List<IntPtr>();
         private static Dictionary<_PartitionClusterData, int> _partitionClusterDataUsedPool =
             new Dictionary<_PartitionClusterData, int>();
@@ -923,10 +929,6 @@ namespace RawDiskReadPOC.NTFS
             internal static unsafe _PartitionClusterData CreateFromPool(ulong unitSize, int unitsCount,
                 bool nonPooled)
             {
-                if (nonPooled) {
-                    // No current use case. Should one emerge, additional code review is required.
-                    throw new ApplicationException("CODE REVIEW REQUIRED.");
-                }
                 if (0 == unitSize) { throw new ArgumentException(); }
                 if (0 >= unitsCount) { throw new ArgumentException(); }
                 if (int.MaxValue < unitSize) { throw new ArgumentOutOfRangeException(); }
@@ -970,14 +972,13 @@ namespace RawDiskReadPOC.NTFS
 
             public unsafe void Dispose()
             {
-                if (NonPooled) {
-                    // No current use case. Should one emerge, additional code review is required.
-                    throw new ApplicationException("CODE REVIEW REQUIRED.");
-                }
                 lock (_partitionClusterDataFreePool) {
                     for (_PartitionClusterData disposed = this; null != disposed; disposed = (_PartitionClusterData)disposed.NextInChain) {
                         _partitionClusterDataUsedPool.Remove(disposed);
-                        if (!NonPooled) {
+                        if (NonPooled) {
+                            Marshal.FreeCoTaskMem((IntPtr)disposed._rawData);
+                        }
+                        else {
                             if (null == disposed._rawData) {
                                 throw new ApplicationException();
                             }

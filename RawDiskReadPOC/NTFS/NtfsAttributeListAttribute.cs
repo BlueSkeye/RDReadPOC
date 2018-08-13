@@ -119,11 +119,84 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
+        private static unsafe bool HandleDataRetrieverRequest(ListEntry* entry, ListEntry* listBase,
+            NtfsAttributeType currentAttributeType, ushort currentAttributeNumber,
+            EntryDataCallbackDelegate dataRetriever, ref uint offset, bool includeData)
+        {
+            // The last callback invocation decided it needs some more data before deciding
+            // what to do.
+            NtfsAttribute* retrievedAttribute = null;
+            bool dataIncluded = includeData;
+            bool retry;
+            IPartitionClusterData clusterData = null;
+            NtfsPartition currentPartition = NtfsPartition.Current;
+
+            try {
+                while(true) {
+                    if (null == retrievedAttribute) {
+                        uint sectorsCount;
+                        List<ulong> entries = new List<ulong>();
+                        if (!includeData) {
+                            sectorsCount = currentPartition.SectorsPerCluster;
+                        }
+                        else {
+                            // Read each record and prepare for data retrieval
+                            uint lastValidOffset;
+                            while (true) {
+                                entries.Add(entry->FileReferenceNumber);
+                                lastValidOffset = offset;
+                                offset += entry->EntryLength;
+                                entry = (ListEntry*)((byte*)listBase + offset);
+                                if ((currentAttributeNumber != entry->AttributeNumber)
+                                    || (currentAttributeType != entry->AttributeType))
+                                {
+                                    break;
+                                }
+                            }
+                            offset = lastValidOffset;
+                            entry = (ListEntry*)((byte*)listBase + offset);
+                        }
+                        // Read each record into the pool allocated zone
+                        int entriesCount = entries.Count;
+                        int clusterSize = (int)(currentPartition.SectorsPerCluster *
+                            currentPartition.BytesPerSector);
+                        clusterData = currentPartition.GetBuffer((uint)(clusterSize * entriesCount));
+                        if (null == clusterData) {
+                            throw new ApplicationException();
+                        }
+                        long currentOffset = 0;
+                        for (int index = 0; index < entriesCount; index++) {
+                            currentPartition.GetCluster(clusterData, currentOffset,
+                                entry->FileReferenceNumber & 0x0000FFFFFFFFFFFF);
+                            currentOffset += clusterSize;
+                        }
+                        retrievedAttribute = (NtfsAttribute*)clusterData.Data;
+                    }
+                    if (!dataRetriever(retrievedAttribute, ref includeData, out retry)) {
+                        return true;
+                    }
+                    if (!retry) { break; }
+                    if (includeData && !dataIncluded) {
+                        // Force another retrieval.
+                        if(null != clusterData) {
+                            clusterData.Dispose();
+                            clusterData = null;
+                        }
+                        retrievedAttribute = null;
+                    }
+                }
+                return false;
+            }
+            finally {
+                if (null != clusterData) { clusterData.Dispose(); }
+            }
+        }
+
         /// <summary></summary>
         /// <param name="from">The NtfsAttributeListAttribute to be used for enumeration.</param>
         /// <remarks>WARNING : This might seems counterintuitive to have this method at a class level instead
         /// of making it an instance one. This is because we absolutely don't want it to be invoked on an
-        /// object reference that is subject to being moved in memory by the GC. Forsing the caller to provide
+        /// object reference that is subject to being moved in memory by the GC. Forcing the caller to provide
         /// a pointer makes her responsible for enforcing the pinning requirements.</remarks>
         internal static unsafe void EnumerateEntries(NtfsAttribute* from,
             NtfsAttributeType searchedAttributeType, EntryEnumeratorCallbackDelegate callback)
@@ -159,19 +232,19 @@ namespace RawDiskReadPOC.NTFS
                 if (null == listBase) {
                     throw new ApplicationException();
                 }
-                uint offset = 0;
                 NtfsAttributeType currentAttributeType = NtfsAttributeType.Unused;
                 ushort currentAttributeNumber = ushort.MaxValue;
-                while (offset < listLength) {
-                    ListEntry* entry = (ListEntry*)((byte*)listBase + offset);
-                    if ((currentAttributeNumber != entry->AttributeNumber)
-                        || (currentAttributeType != entry->AttributeType))
+                ListEntry* entry;
+                for (uint offset = 0; offset < listLength; offset += entry->EntryLength) {
+                    entry = (ListEntry*)((byte*)listBase + offset);
+                    if ((currentAttributeNumber == entry->AttributeNumber)
+                        || (currentAttributeType == entry->AttributeType))
                     {
-                        currentAttributeNumber = entry->AttributeNumber;
-                        currentAttributeType = entry->AttributeType;
                         if ((NtfsAttributeType.Unused == searchedAttributeType)
                             || (entry->AttributeType == searchedAttributeType))
                         {
+                            currentAttributeNumber = entry->AttributeNumber;
+                            currentAttributeType = entry->AttributeType;
                             EntryDataCallbackDelegate dataRetriever;
                             bool includeData;
                             if (!callback(entry, out dataRetriever, out includeData)) {
@@ -180,76 +253,78 @@ namespace RawDiskReadPOC.NTFS
                             if (null != dataRetriever) {
                                 // The last callback invocation decided it needs some more data before deciding
                                 // what to do.
-                                NtfsAttribute* retrievedAttribute = null;
-                                bool dataIncluded = includeData;
-                                bool retry;
-                                IPartitionClusterData clusterData = null;
-                                NtfsPartition currentPartition = NtfsPartition.Current;
+                                if (HandleDataRetrieverRequest(entry, listBase, currentAttributeType, 
+                                    currentAttributeNumber, dataRetriever, ref offset, includeData))
+                                {
+                                    return;
+                                }
+                                //NtfsAttribute* retrievedAttribute = null;
+                                //bool dataIncluded = includeData;
+                                //bool retry;
+                                //IPartitionClusterData clusterData = null;
+                                //NtfsPartition currentPartition = NtfsPartition.Current;
 
-                                try {
-                                    while(true) {
-                                        if (null == retrievedAttribute) {
-                                            uint sectorsCount;
-                                            List<ulong> entries = new List<ulong>();
-                                            if (!includeData) {
-                                                sectorsCount = currentPartition.SectorsPerCluster;
-                                            }
-                                            else {
-                                                // Read each record and prepare for data retrieval
-                                                uint lastValidOffset;
-                                                while (true) {
-                                                    entries.Add(entry->FileReferenceNumber);
-                                                    lastValidOffset = offset;
-                                                    offset += entry->EntryLength;
-                                                    entry = (ListEntry*)((byte*)listBase + offset);
-                                                    if ((currentAttributeNumber != entry->AttributeNumber)
-                                                        || (currentAttributeType != entry->AttributeType))
-                                                    {
-                                                        break;
-                                                    }
-                                                }
-                                                offset = lastValidOffset;
-                                                entry = (ListEntry*)((byte*)listBase + offset);
-                                            }
-                                            // Read each record into the pool allocated zone
-                                            int entriesCount = entries.Count;
-                                            int clusterSize = (int)(currentPartition.SectorsPerCluster *
-                                                currentPartition.BytesPerSector);
-                                            clusterData = currentPartition.GetBuffer((uint)(clusterSize * entriesCount));
-                                            if (null == clusterData) {
-                                                throw new ApplicationException();
-                                            }
-                                            long currentOffset = 0;
-                                            for (int index = 0; index < entriesCount; index++) {
-                                                currentPartition.GetCluster(clusterData, currentOffset,
-                                                    entry->FileReferenceNumber & 0x0000FFFFFFFFFFFF);
-                                                currentOffset += clusterSize;
-                                            }
-                                            retrievedAttribute = (NtfsAttribute*)clusterData.Data;
-                                            retrievedAttribute->BinaryDump();
-                                            retrievedAttribute->Dump();
-                                        }
-                                        if (!dataRetriever(retrievedAttribute, ref includeData, out retry)) {
-                                            return;
-                                        }
-                                        if (!retry) { break; }
-                                        if (includeData && !dataIncluded) {
-                                            // Force another retrieval.
-                                            if(null != clusterData) {
-                                                clusterData.Dispose();
-                                                clusterData = null;
-                                            }
-                                            retrievedAttribute = null;
-                                        }
-                                    }
-                                }
-                                finally {
-                                    if (null != clusterData) { clusterData.Dispose(); }
-                                }
+                                //try {
+                                //    while(true) {
+                                //        if (null == retrievedAttribute) {
+                                //            uint sectorsCount;
+                                //            List<ulong> entries = new List<ulong>();
+                                //            if (!includeData) {
+                                //                sectorsCount = currentPartition.SectorsPerCluster;
+                                //            }
+                                //            else {
+                                //                // Read each record and prepare for data retrieval
+                                //                uint lastValidOffset;
+                                //                while (true) {
+                                //                    entries.Add(entry->FileReferenceNumber);
+                                //                    lastValidOffset = offset;
+                                //                    offset += entry->EntryLength;
+                                //                    entry = (ListEntry*)((byte*)listBase + offset);
+                                //                    if ((currentAttributeNumber != entry->AttributeNumber)
+                                //                        || (currentAttributeType != entry->AttributeType))
+                                //                    {
+                                //                        break;
+                                //                    }
+                                //                }
+                                //                offset = lastValidOffset;
+                                //                entry = (ListEntry*)((byte*)listBase + offset);
+                                //            }
+                                //            // Read each record into the pool allocated zone
+                                //            int entriesCount = entries.Count;
+                                //            int clusterSize = (int)(currentPartition.SectorsPerCluster *
+                                //                currentPartition.BytesPerSector);
+                                //            clusterData = currentPartition.GetBuffer((uint)(clusterSize * entriesCount));
+                                //            if (null == clusterData) {
+                                //                throw new ApplicationException();
+                                //            }
+                                //            long currentOffset = 0;
+                                //            for (int index = 0; index < entriesCount; index++) {
+                                //                currentPartition.GetCluster(clusterData, currentOffset,
+                                //                    entry->FileReferenceNumber & 0x0000FFFFFFFFFFFF);
+                                //                currentOffset += clusterSize;
+                                //            }
+                                //            retrievedAttribute = (NtfsAttribute*)clusterData.Data;
+                                //        }
+                                //        if (!dataRetriever(retrievedAttribute, ref includeData, out retry)) {
+                                //            return;
+                                //        }
+                                //        if (!retry) { break; }
+                                //        if (includeData && !dataIncluded) {
+                                //            // Force another retrieval.
+                                //            if(null != clusterData) {
+                                //                clusterData.Dispose();
+                                //                clusterData = null;
+                                //            }
+                                //            retrievedAttribute = null;
+                                //        }
+                                //    }
+                                //}
+                                //finally {
+                                //    if (null != clusterData) { clusterData.Dispose(); }
+                                //}
                             }
                         }
                     }
-                    offset += entry->EntryLength;
                 }
             }
             finally {

@@ -21,6 +21,12 @@ namespace RawDiskReadPOC.NTFS
 
         internal NtfsPartition Partition { get; private set;}
 
+        private static unsafe bool IsDollarJAttribute(NtfsAttribute* candidate)
+        {
+            bool isJAttribute = "$J" == candidate->Name;
+            return isJAttribute;
+        }
+
         internal void Run(bool background = false)
         {
             if (background) {
@@ -50,13 +56,10 @@ namespace RawDiskReadPOC.NTFS
                     NtfsFileRecord* fileRecord =
                         partition.GetFileRecord(fileDescriptor->FileReference, ref fileData);
                     fileRecord->AssertRecordType();
-                    NtfsAttribute* rawAttributeList = fileRecord->GetAttribute(NtfsAttributeType.AttributeAttributeList,
-                        1,
-                        delegate(NtfsAttribute* candidate) {
-                            return "$J" == candidate->Name;
-                        });
-                    if (null != rawAttributeList) {
-                        NtfsAttributeListAttribute.Dump(rawAttributeList);
+                    NtfsAttribute* jAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData,
+                        1, _isDollarJAttributeNameFilter);
+                    if (null != jAttribute) {
+                        NtfsAttributeListAttribute.Dump(jAttribute);
                     }
                     fileRecord->DumpAttributes(true);
                     NtfsAttribute* rawAttribute =
@@ -98,6 +101,8 @@ namespace RawDiskReadPOC.NTFS
                 }
             }
         }
+
+        private static unsafe NtfsFileRecord.AttributeNameFilterDelegate _isDollarJAttributeNameFilter = IsDollarJAttribute;
 
         private struct MaxAttribute
         {

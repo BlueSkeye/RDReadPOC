@@ -19,6 +19,31 @@ namespace RawDiskReadPOC
             _inUse = true;
         }
 
+        /// <summary>For debugging purpose. Could be unused.</summary>
+        internal unsafe void AssertConsistency()
+        {
+            foreach(IPartitionClusterData item in this) {
+                if (null == item.Data) {
+                    throw new ApplicationException();
+                }
+            }
+        }
+
+        internal static PartitionDataDisposableBatch CreateNew()
+        {
+            PartitionDataDisposableBatch result = new PartitionDataDisposableBatch();
+            _threadStack.Push(result);
+            return result;
+        }
+
+        public void Dispose()
+        {
+            foreach(IPartitionClusterData item in this) {
+                item.Dispose();
+            }
+            _inUse = false;
+        }
+
         /// <summary>This method is a shortcut. It should be invoked in context where the calller is sure
         /// there is already a batch available, otherwise the call will fail.</summary>
         /// <returns></returns>
@@ -38,21 +63,6 @@ namespace RawDiskReadPOC
             }
             owner = false;
             return _threadStack.Peek();
-        }
-
-        internal static PartitionDataDisposableBatch CreateNew()
-        {
-            PartitionDataDisposableBatch result = new PartitionDataDisposableBatch();
-            _threadStack.Push(result);
-            return result;
-        }
-
-        public void Dispose()
-        {
-            foreach(IPartitionClusterData item in this) {
-                item.Dispose();
-            }
-            _inUse = false;
         }
 
         private static object _globalLock = new object();
