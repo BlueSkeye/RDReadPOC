@@ -9,6 +9,11 @@ namespace RawDiskReadPOC.NTFS
     /// <remarks>Size is 0x10/16 bytes.</remarks>
     internal struct NtfsAttribute
     {
+        internal bool IsLast
+        {
+            get { return (NtfsAttributeType.EndOfListMarker == AttributeType); }
+        }
+
         internal bool IsResident
         {
             get { return (0 == Nonresident); }

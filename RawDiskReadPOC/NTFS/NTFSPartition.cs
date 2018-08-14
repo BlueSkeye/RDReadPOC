@@ -36,6 +36,9 @@ namespace RawDiskReadPOC.NTFS
             get { return _bytesPerSector; }
         }
 
+        /// <summary>Number of MFT entries in a cluster.</summary>
+        internal ulong MFTEntryPerCluster { get; private set; }
+
         /// <summary>Mft record size in clusters.</summary>
         internal ulong MFTEntrySize { get; private set; }
 
@@ -113,7 +116,7 @@ namespace RawDiskReadPOC.NTFS
                     NtfsAttribute* currentAttribute = (NtfsAttribute*)((byte*)header + header->AttributesOffset);
                     // Walk attributes. Technically this is useless. However that let us trace metafile names.
                     for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
-                        if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) {
+                        if (NtfsAttributeType.EndOfListMarker == currentAttribute->AttributeType) {
                             break;
                         }
                         if (NtfsAttributeType.AttributeFileName == currentAttribute->AttributeType) {
@@ -129,7 +132,7 @@ namespace RawDiskReadPOC.NTFS
                             _metadataFilesLBAByName.Add(metadataFileName, currentRecordLBA);
                         }
                         currentAttribute = (NtfsAttribute*)((byte*)currentAttribute +
-                            ((NtfsAttributeType.AttributeNone == currentAttribute->AttributeType)
+                            ((NtfsAttributeType.EndOfListMarker == currentAttribute->AttributeType)
                                 ? sizeof(ulong)
                                 : currentAttribute->GetResidentSize()));
                     }
@@ -179,7 +182,6 @@ namespace RawDiskReadPOC.NTFS
             ulong currentRecordLBA =
                 _metadataFileLBAs[(int)NtfsWellKnownMetadataFiles.BadClusters];
             NtfsFileRecord* header = null;
-            uint readOpCount = 0;
             IPartitionClusterData clusterData = null;
             try {
                 clusterData = ReadSectors(currentRecordLBA, SectorsPerCluster);
@@ -285,7 +287,7 @@ namespace RawDiskReadPOC.NTFS
                             string metadataFileName = Encoding.Unicode.GetString((byte*)&nameAttribute->Name, nameAttribute->NameLength * sizeof(char));
                             Console.WriteLine(metadataFileName);
                         }
-                        if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
+                        if (NtfsAttributeType.EndOfListMarker == currentAttribute->AttributeType) { break; }
                         currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
                     }
                     header = (NtfsFileRecord*)((byte*)header + header->BytesAllocated);
@@ -319,7 +321,7 @@ namespace RawDiskReadPOC.NTFS
                     if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
                     if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
                     if (!callback(currentAttribute)) { return; }
-                    if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
+                    if (NtfsAttributeType.EndOfListMarker == currentAttribute->AttributeType) { break; }
                     currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
                 }
             }
@@ -588,8 +590,7 @@ namespace RawDiskReadPOC.NTFS
             return result;
         }
 
-        /// <summary>
-        /// On return fixups are already applied.</summary>
+        /// <summary>On return fixups are already applied.</summary>
         /// <param name="referenceNumber"></param>
         /// <param name="data"></param>
         /// <returns></returns>
@@ -653,6 +654,10 @@ namespace RawDiskReadPOC.NTFS
                 MFTEntrySize = (0 < rawClusteringValue)
                     ? (byte)rawClusteringValue
                     : (1UL << (-rawClusteringValue));
+                if (0 != (ClusterSize % MFTEntrySize)) {
+                    throw new ApplicationException();
+                }
+                MFTEntryPerCluster = ClusterSize / MFTEntrySize;
                 sectorPosition += 3; // Unused
                 rawClusteringValue = *(sbyte*)(sectorPosition++);
                 ClustersPerIndexBuffer = (0 < rawClusteringValue)
@@ -719,7 +724,7 @@ namespace RawDiskReadPOC.NTFS
                 for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
                     if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
                     if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
-                    if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
+                    if (NtfsAttributeType.EndOfListMarker == currentAttribute->AttributeType) { break; }
                     NtfsNonResidentAttribute* nonResident = (0 == currentAttribute->Nonresident)
                         ? null
                         : (NtfsNonResidentAttribute*)currentAttribute;
@@ -779,7 +784,7 @@ namespace RawDiskReadPOC.NTFS
                 for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
                     if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
                     if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
-                    if (NtfsAttributeType.AttributeNone == currentAttribute->AttributeType) { break; }
+                    if (NtfsAttributeType.EndOfListMarker == currentAttribute->AttributeType) { break; }
                     NtfsNonResidentAttribute* nonResident = (0 == currentAttribute->Nonresident)
                         ? null
                         : (NtfsNonResidentAttribute*)currentAttribute;

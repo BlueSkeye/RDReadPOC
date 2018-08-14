@@ -32,35 +32,37 @@ namespace RawDiskReadPOC.NTFS
     /// - There are many named streams.</remarks>
     internal struct NtfsAttributeListAttribute
     {
-        /// <summary>A delegate to be invoked for attribute data retrieval during the attribute
-        /// enumeration process.</summary>
+        /// <summary>Whenever a process enumerating <see cref="ListEntry"/> from an
+        /// <see cref="NtfsAttributeListAttribute"/> wishes to retrieve the underlying
+        /// <see cref="NtfsAttribute"/>, it should provide an implementation of this delegate that
+        /// will be later invoked with attribute data.</summary>
         /// <param name="attribute">The attribute (with data) to be handled. The data includes either just
-        /// the header or full data depending on the value of the input value of includeData parameter.</param>
-        /// <param name="includeData"></param>
+        /// the header or full data depending on the value of the includeData parameter.</param>
+        /// <param name="data">If this parameter is not null, the invoked delegate can read the stream
+        /// to access the attribute data content.</param>
         /// <param name="retry">On return, if this value is true, the same delegate will be invoked again
-        /// for the same attribute. This is usefull for anattribute that may have a lot of data, such as
+        /// for the same attribute. This is usefull for an attribute that may have a lot of data, such as
         /// the $J attribute of the $UsnJrnl where the method invoking the enumeration wants to quickly
         /// find the relevant attribute just using attribute header data, then once found have a closer
         /// look at the attribute data. This can be easily performed by being called back with just the
-        /// attribute header first, then setting the retry parameter and switching the includeData
-        /// parameter from false to true.</param>
+        /// attribute header first, then setting the retry parameter.</param>
         /// <returns>True if enumeration should continue, false otherwise.</returns>
-        internal unsafe delegate bool EntryDataCallbackDelegate(NtfsAttribute* attribute, ref bool includeData,
-            out bool retry);
+        internal unsafe delegate bool EntryListReferencedAttributeHandlerDelegate(NtfsAttribute* attribute,
+            Stream data, out bool retry);
 
         /// <summary>The delegate to be invoked by the entry enumerator method.</summary>
         /// <param name="entry">An enumerated entry. Each attribute will be enumerated once only, even
         /// if it span several entries. The enumeration will occur on entry having LowVcn = 0.</param>
-        /// <param name="dataRetrievalCallback">On return, if this parameter is not a null reference, it
-        /// is a delegate to be invoked eirher with the <see cref="NtfsAttribute"/> header only or with
+        /// <param name="attributeDataHandler">On return, if this parameter is not a null reference, it
+        /// is a delegate to be invoked either with the <see cref="NtfsAttribute"/> header only or with
         /// full attribute data depending on the value of includeFullData</param>
-        /// <param name="includeFullData">The value of this parameter on delegate invocation return is
-        /// meaningfull iif the dataRetrievalCallback is not a null reference. This boolean value is true
-        /// if the dataRetrievalCallback is to be invoked with full attribute data. Otherwise the only
+        /// <param name="includeData">The value of this parameter on delegate invocation return is
+        /// meaningfull iif the attributeDataHandler is not a null reference. This boolean value is true
+        /// if the attributeDataHandle is to be invoked with full attribute data. Otherwise the sole
         /// the attribute header part will be provided.</param>
         /// <returns></returns>
         internal unsafe delegate bool EntryEnumeratorCallbackDelegate(ListEntry* entry,
-            out EntryDataCallbackDelegate dataRetrievalCallback, out bool includeFullData);
+            out EntryListReferencedAttributeHandlerDelegate attributeDataHandler, out bool includeData);
 
         internal static unsafe void BinaryDump(NtfsAttribute* from)
         {
@@ -110,7 +112,7 @@ namespace RawDiskReadPOC.NTFS
                 uint offset = 0;
                 while (offset < listLength) {
                     ListEntry* entry = (ListEntry*)((byte*)listBase + offset);
-                    entry->Dump();
+                    callback(entry);
                     offset += entry->EntryLength;
                 }
             }
@@ -119,87 +121,20 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
-        private static unsafe bool HandleDataRetrieverRequest(ListEntry* entry, ListEntry* listBase,
-            NtfsAttributeType currentAttributeType, ushort currentAttributeNumber,
-            EntryDataCallbackDelegate dataRetriever, ref uint offset, bool includeData)
-        {
-            // The last callback invocation decided it needs some more data before deciding
-            // what to do.
-            NtfsAttribute* retrievedAttribute = null;
-            bool dataIncluded = includeData;
-            bool retry;
-            IPartitionClusterData clusterData = null;
-            NtfsPartition currentPartition = NtfsPartition.Current;
-
-            try {
-                while(true) {
-                    if (null == retrievedAttribute) {
-                        uint sectorsCount;
-                        List<ulong> entries = new List<ulong>();
-                        if (!includeData) {
-                            sectorsCount = currentPartition.SectorsPerCluster;
-                        }
-                        else {
-                            // Read each record and prepare for data retrieval
-                            uint lastValidOffset;
-                            while (true) {
-                                entries.Add(entry->FileReferenceNumber);
-                                lastValidOffset = offset;
-                                offset += entry->EntryLength;
-                                entry = (ListEntry*)((byte*)listBase + offset);
-                                if ((currentAttributeNumber != entry->AttributeNumber)
-                                    || (currentAttributeType != entry->AttributeType))
-                                {
-                                    break;
-                                }
-                            }
-                            offset = lastValidOffset;
-                            entry = (ListEntry*)((byte*)listBase + offset);
-                        }
-                        // Read each record into the pool allocated zone
-                        int entriesCount = entries.Count;
-                        int clusterSize = (int)(currentPartition.SectorsPerCluster *
-                            currentPartition.BytesPerSector);
-                        clusterData = currentPartition.GetBuffer((uint)(clusterSize * entriesCount));
-                        if (null == clusterData) {
-                            throw new ApplicationException();
-                        }
-                        long currentOffset = 0;
-                        for (int index = 0; index < entriesCount; index++) {
-                            currentPartition.GetCluster(clusterData, currentOffset,
-                                entry->FileReferenceNumber & 0x0000FFFFFFFFFFFF);
-                            currentOffset += clusterSize;
-                        }
-                        retrievedAttribute = (NtfsAttribute*)clusterData.Data;
-                    }
-                    if (!dataRetriever(retrievedAttribute, ref includeData, out retry)) {
-                        return true;
-                    }
-                    if (!retry) { break; }
-                    if (includeData && !dataIncluded) {
-                        // Force another retrieval.
-                        if(null != clusterData) {
-                            clusterData.Dispose();
-                            clusterData = null;
-                        }
-                        retrievedAttribute = null;
-                    }
-                }
-                return false;
-            }
-            finally {
-                if (null != clusterData) { clusterData.Dispose(); }
-            }
-        }
-
         /// <summary></summary>
         /// <param name="from">The NtfsAttributeListAttribute to be used for enumeration.</param>
-        /// <remarks>WARNING : This might seems counterintuitive to have this method at a class level instead
-        /// of making it an instance one. This is because we absolutely don't want it to be invoked on an
-        /// object reference that is subject to being moved in memory by the GC. Forcing the caller to provide
-        /// a pointer makes her responsible for enforcing the pinning requirements.</remarks>
+        /// <param name="searchedAttributeType">The type of the searched attribute or
+        /// <see cref="NtfsAttributeType.Any"/> if the caller is interested in all kinds of
+        /// attributes.</param>
+        /// <param name="listEntryHandler">A callback to be invoked on each entry matching
+        /// the attribute type selection criteria.</param>
+        /// <remarks>WARNING : This might seems counterintuitive to have this method at a class
+        /// level instead of making it an instance one. This is because we absolutely don't want
+        /// it to be invoked on an object reference that is subject to being moved in memory by
+        /// the GC. Forcing the caller to provide a pointer makes her responsible for enforcing
+        /// the pinning requirements.</remarks>
         internal static unsafe void EnumerateEntries(NtfsAttribute* from,
-            NtfsAttributeType searchedAttributeType, EntryEnumeratorCallbackDelegate callback)
+            NtfsAttributeType searchedAttributeType, EntryEnumeratorCallbackDelegate listEntryHandler)
         {
             if (null == from) {
                 throw new ArgumentNullException();
@@ -208,6 +143,7 @@ namespace RawDiskReadPOC.NTFS
                 throw new ArgumentException();
             }
             IPartitionClusterData listAttributeData = null;
+            // Address of first ListeEntry item for this attribute.
             ListEntry* listBase = null;
             uint listLength;
             try {
@@ -232,98 +168,41 @@ namespace RawDiskReadPOC.NTFS
                 if (null == listBase) {
                     throw new ApplicationException();
                 }
-                NtfsAttributeType currentAttributeType = NtfsAttributeType.Unused;
+                NtfsAttributeType currentAttributeType = NtfsAttributeType.Any;
                 ushort currentAttributeNumber = ushort.MaxValue;
-                ListEntry* entry;
-                for (uint offset = 0; offset < listLength; offset += entry->EntryLength) {
-                    entry = (ListEntry*)((byte*)listBase + offset);
-                    if ((currentAttributeNumber == entry->AttributeNumber)
-                        || (currentAttributeType == entry->AttributeType))
+                ListEntry* scannedEntry;
+                for (uint offset = 0; offset < listLength; offset += scannedEntry->EntryLength) {
+                    scannedEntry = (ListEntry*)((byte*)listBase + offset);
+                    if (   (currentAttributeNumber == scannedEntry->AttributeNumber)
+                        && (currentAttributeType == scannedEntry->AttributeType))
                     {
-                        if ((NtfsAttributeType.Unused == searchedAttributeType)
-                            || (entry->AttributeType == searchedAttributeType))
-                        {
-                            currentAttributeNumber = entry->AttributeNumber;
-                            currentAttributeType = entry->AttributeType;
-                            EntryDataCallbackDelegate dataRetriever;
-                            bool includeData;
-                            if (!callback(entry, out dataRetriever, out includeData)) {
-                                return;
-                            }
-                            if (null != dataRetriever) {
-                                // The last callback invocation decided it needs some more data before deciding
-                                // what to do.
-                                if (HandleDataRetrieverRequest(entry, listBase, currentAttributeType, 
-                                    currentAttributeNumber, dataRetriever, ref offset, includeData))
-                                {
-                                    return;
-                                }
-                                //NtfsAttribute* retrievedAttribute = null;
-                                //bool dataIncluded = includeData;
-                                //bool retry;
-                                //IPartitionClusterData clusterData = null;
-                                //NtfsPartition currentPartition = NtfsPartition.Current;
-
-                                //try {
-                                //    while(true) {
-                                //        if (null == retrievedAttribute) {
-                                //            uint sectorsCount;
-                                //            List<ulong> entries = new List<ulong>();
-                                //            if (!includeData) {
-                                //                sectorsCount = currentPartition.SectorsPerCluster;
-                                //            }
-                                //            else {
-                                //                // Read each record and prepare for data retrieval
-                                //                uint lastValidOffset;
-                                //                while (true) {
-                                //                    entries.Add(entry->FileReferenceNumber);
-                                //                    lastValidOffset = offset;
-                                //                    offset += entry->EntryLength;
-                                //                    entry = (ListEntry*)((byte*)listBase + offset);
-                                //                    if ((currentAttributeNumber != entry->AttributeNumber)
-                                //                        || (currentAttributeType != entry->AttributeType))
-                                //                    {
-                                //                        break;
-                                //                    }
-                                //                }
-                                //                offset = lastValidOffset;
-                                //                entry = (ListEntry*)((byte*)listBase + offset);
-                                //            }
-                                //            // Read each record into the pool allocated zone
-                                //            int entriesCount = entries.Count;
-                                //            int clusterSize = (int)(currentPartition.SectorsPerCluster *
-                                //                currentPartition.BytesPerSector);
-                                //            clusterData = currentPartition.GetBuffer((uint)(clusterSize * entriesCount));
-                                //            if (null == clusterData) {
-                                //                throw new ApplicationException();
-                                //            }
-                                //            long currentOffset = 0;
-                                //            for (int index = 0; index < entriesCount; index++) {
-                                //                currentPartition.GetCluster(clusterData, currentOffset,
-                                //                    entry->FileReferenceNumber & 0x0000FFFFFFFFFFFF);
-                                //                currentOffset += clusterSize;
-                                //            }
-                                //            retrievedAttribute = (NtfsAttribute*)clusterData.Data;
-                                //        }
-                                //        if (!dataRetriever(retrievedAttribute, ref includeData, out retry)) {
-                                //            return;
-                                //        }
-                                //        if (!retry) { break; }
-                                //        if (includeData && !dataIncluded) {
-                                //            // Force another retrieval.
-                                //            if(null != clusterData) {
-                                //                clusterData.Dispose();
-                                //                clusterData = null;
-                                //            }
-                                //            retrievedAttribute = null;
-                                //        }
-                                //    }
-                                //}
-                                //finally {
-                                //    if (null != clusterData) { clusterData.Dispose(); }
-                                //}
-                            }
-                        }
+                        // The entry is a continuation of the previous one. Ignore it. It should
+                        // have been processed by a previous loop if required.
+                        continue;
+                    }
+                    currentAttributeNumber = scannedEntry->AttributeNumber;
+                    currentAttributeType = scannedEntry->AttributeType;
+                    if (   (NtfsAttributeType.Any != searchedAttributeType)
+                        && (scannedEntry->AttributeType != searchedAttributeType))
+                    {
+                        // This entry doesn't match the search criteria on attribute type.
+                        continue;
+                    }
+                    EntryListReferencedAttributeHandlerDelegate attributeDataHandler;
+                    bool includeData;
+                    if (!listEntryHandler(scannedEntry, out attributeDataHandler, out includeData)) {
+                        // The callback doesn't wish to continue with other list entries.
+                        return;
+                    }
+                    if (null == attributeDataHandler) {
+                        // The callback doesn't wish to retrieve the attribute itself for the
+                        // currently scanned entry.
+                        continue;
+                    }
+                    // The last callback invocation decided it needs some data from the attribute
+                    // itself before deciding what to do.
+                    if (!HandleEntryReferencedAttribute(scannedEntry, attributeDataHandler, includeData)) {
+                        return;
                     }
                 }
             }
@@ -332,9 +211,82 @@ namespace RawDiskReadPOC.NTFS
             }
         }
 
-        internal void GetEnumeratedEntryData()
+        /// <summary>The caller enumerating entries might be interested in the content of
+        /// the currently scanned entry. This might be either for additional filtering at
+        /// attribute level (including attribute name) or for full attribute data processing.
+        /// </summary>
+        /// <param name="entry">The scanned list entry of interest. Should a single
+        /// attribute span several entries, this one is guaranteed to be the first one for the
+        /// attribute.</param>
+        /// <param name="entryReferencedAttributeHandler">The callback that will be invoked
+        /// with the referenced attribute with or without full attribute data depending on
+        /// the value of <paramref name="dataIncluded"/></param>
+        /// <param name="dataIncluded"></param>
+        /// <returns>true if caller should continue process data, false if it should stop.</returns>
+        private static unsafe bool HandleEntryReferencedAttribute(ListEntry* entry,
+            EntryListReferencedAttributeHandlerDelegate entryReferencedAttributeHandler,
+            bool dataIncluded)
         {
-            throw new NotImplementedException();
+            ushort currentAttributeNumber = entry->AttributeNumber;
+            NtfsAttributeType currentAttributeType = entry->AttributeType;
+            byte* baseAddress = (byte*)entry;
+            uint relativeOffset = 0;
+
+            // The last callback invocation decided it needs some more data before deciding
+            // what to do.
+            IPartitionClusterData clusterData = null;
+            NtfsPartition currentPartition = NtfsPartition.Current;
+
+            using (PartitionDataDisposableBatch batch = PartitionDataDisposableBatch.CreateNew()) {
+                while (true) {
+                    ListEntry* scannedEntry = (ListEntry*)baseAddress;
+                    ulong mainFileReferenceNumber = entry->FileReferenceNumber;
+                    List<ulong> entries = new List<ulong>();
+                    Stream dataStream = null;
+                    if (dataIncluded) {
+                        // Read each record and prepare for data retrieval
+                        while (true) {
+                            entries.Add(scannedEntry->FileReferenceNumber);
+                            relativeOffset += scannedEntry->EntryLength;
+                            scannedEntry = (ListEntry*)(baseAddress + relativeOffset);
+                            if (   (currentAttributeNumber != scannedEntry->AttributeNumber)
+                                || (currentAttributeType != scannedEntry->AttributeType))
+                            {
+                                break;
+                            }
+                        }
+                        dataStream = new MultiRecordAttributeDataStream(entries);
+                    }
+                    // Retrieve attribute itself.
+                    NtfsFileRecord* mainFileRecord =
+                        currentPartition.GetFileRecord(mainFileReferenceNumber, ref clusterData);
+                    if (null == mainFileRecord) {
+                        throw new ApplicationException();
+                    }
+                    NtfsAttribute* retrievedAttribute = 
+                        (NtfsAttribute*)((byte*)mainFileRecord + mainFileRecord->AttributesOffset);
+
+                    // Invoke callback.
+                    bool retry;
+                    if (!entryReferencedAttributeHandler(retrievedAttribute, dataStream, out retry)) {
+                        // After attribute has been processed, it has been decided no other list
+                        // entry should be performed.
+                        return false;
+                    }
+                    if (!retry) {
+                        // After attribute has been processed, it has been decided that no
+                        // additional data from this attribute is required. However the enumeration
+                        // of other list entries should continue.
+                        return true;
+                    }
+                    if (dataIncluded) {
+                        throw new InvalidOperationException();
+                    }
+                    // Attribute has been processed, however not enough data was available for a
+                    // final decision. We loop and include all data now.
+                    dataIncluded = true;
+                }
+            }
         }
 
         internal struct ListEntry
@@ -389,6 +341,63 @@ namespace RawDiskReadPOC.NTFS
             /// otherwise 0.</summary>
             internal ushort AttributeNumber;
             // The name if any starts here.
+        }
+
+        internal class MultiRecordAttributeDataStream : Stream
+        {
+            internal MultiRecordAttributeDataStream(List<ulong> entries)
+            {
+                if (null == entries) {
+                    throw new ArgumentNullException();
+                }
+                if (1 > entries.Count) {
+                    throw new ArgumentException();
+                }
+                _entries = new List<ulong>(entries);
+            }
+
+            public override bool CanRead => true;
+
+            public override bool CanSeek => false;
+
+            public override bool CanTimeout => false;
+
+            public override bool CanWrite => false;
+
+            public override long Length => throw new NotSupportedException();
+
+            public override long Position
+            {
+                get => throw new NotSupportedException();
+                set => throw new NotSupportedException();
+            }
+
+            public override void Flush()
+            {
+                throw new NotSupportedException();
+            }
+
+            public override int Read(byte[] buffer, int offset, int count)
+            {
+                throw new NotImplementedException();
+            }
+
+            public override long Seek(long offset, SeekOrigin origin)
+            {
+                throw new NotSupportedException();
+            }
+
+            public override void SetLength(long value)
+            {
+                throw new NotSupportedException();
+            }
+
+            public override void Write(byte[] buffer, int offset, int count)
+            {
+                throw new NotImplementedException();
+            }
+
+            private List<ulong> _entries;
         }
     }
 }

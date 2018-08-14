@@ -9,7 +9,9 @@ namespace RawDiskReadPOC.NTFS
     /// I do not know what is...</summary>
     internal enum NtfsAttributeType : uint
     {
-        Unused = 0,
+        /// <summary>Not a real value. This is used for attribute type filtering during searches.
+        /// </summary>
+        Any = 0,
         AttributeStandardInformation = 0x10,
         AttributeAttributeList = 0x20,
         AttributeFileName = 0x30,
@@ -26,6 +28,6 @@ namespace RawDiskReadPOC.NTFS
         AttributeEA = 0xE0,
         AttributePropertySet = 0xF0,
         AttributeLoggedUtilityStream = 0x100,
-        AttributeNone = 0xFFFFFFFF,
+        EndOfListMarker = 0xFFFFFFFF,
     }
 }

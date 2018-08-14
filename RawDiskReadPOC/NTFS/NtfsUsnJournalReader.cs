@@ -58,10 +58,19 @@ namespace RawDiskReadPOC.NTFS
                     fileRecord->AssertRecordType();
                     NtfsAttribute* jAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData,
                         1, _isDollarJAttributeNameFilter);
-                    if (null != jAttribute) {
-                        NtfsAttributeListAttribute.Dump(jAttribute);
+                    if (null == jAttribute) {
+                        throw new ApplicationException();
                     }
-                    fileRecord->DumpAttributes(true);
+                    jAttribute->Dump();
+                    if (jAttribute->IsResident) {
+                        NtfsResidentAttribute* jReAttribute = (NtfsResidentAttribute*)jAttribute;
+                        jReAttribute->Dump();
+                    }
+                    else {
+                        NtfsNonResidentAttribute* jNrAttribute = (NtfsNonResidentAttribute*)jAttribute;
+                        jNrAttribute->Dump();
+                    }
+                    throw new NotImplementedException();
                     NtfsAttribute* rawAttribute =
                         fileRecord->GetAttribute(NtfsAttributeType.AttributeData, 1);
                     if (null == rawAttribute) {

@@ -197,8 +197,8 @@ namespace RawDiskReadPOC.NTFS
         /// <summary>Byte size of initialized portion of the attribute value.Usually equals
         /// data_size.</summary>
         internal ulong InitializedSize;
-        /// <summary>Byte size of the attribute value after compression.Only present when compressed
-        /// or sparse.Always is a multiple of the cluster size.  Represents the actual amount of disk
+        /// <summary>Byte size of the attribute value after compression. Only present when compressed
+        /// or sparse. Always is a multiple of the cluster size. Represents the actual amount of disk
         /// space being used on the disk.</summary>
         internal ulong CompressedSize;
 
