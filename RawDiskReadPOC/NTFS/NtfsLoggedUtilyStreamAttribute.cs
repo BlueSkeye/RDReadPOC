@@ -5,10 +5,10 @@ using System.Runtime.InteropServices;
 namespace RawDiskReadPOC.NTFS
 {
     /// <summary>NOTE: Can be resident or non-resident.
-    /// Operations on this attribute are logged to the journal ($LogFile) like normal metadata
-    /// changes.
-    /// Used by the Encrypting File System (EFS). All encrypted files have this attribute with
-    /// the name $EFS.</summary>
+    /// Operations on this attribute are logged to the journal ($LogFile) like normal
+    /// metadata changes.
+    /// Used by the Encrypting File System (EFS). All encrypted files have this attribute
+    /// with the name $EFS.</summary>
     [StructLayout(LayoutKind.Explicit)]
     internal struct NtfsLoggedUtilyStreamAttribute
     {

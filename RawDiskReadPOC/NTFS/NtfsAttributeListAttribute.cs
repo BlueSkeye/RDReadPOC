@@ -32,6 +32,8 @@ namespace RawDiskReadPOC.NTFS
     /// - There are many named streams.</remarks>
     internal struct NtfsAttributeListAttribute
     {
+        private unsafe delegate void DumpCallbackDelegate(ListEntry* entry);
+
         /// <summary>Whenever a process enumerating <see cref="ListEntry"/> from an
         /// <see cref="NtfsAttributeListAttribute"/> wishes to retrieve the underlying
         /// <see cref="NtfsAttribute"/>, it should provide an implementation of this delegate that
@@ -64,31 +66,29 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe delegate bool EntryEnumeratorCallbackDelegate(ListEntry* entry,
             out EntryListReferencedAttributeHandlerDelegate attributeDataHandler, out bool includeData);
 
-        internal static unsafe void BinaryDump(NtfsAttribute* from)
+        internal static unsafe void BinaryDump(NtfsAttributeListAttribute* from)
         {
             _Dump(from, delegate (ListEntry* entry) { entry->BinaryDump(); });
         }
 
-        internal static unsafe void Dump(NtfsAttribute* from)
+        internal static unsafe void Dump(NtfsAttributeListAttribute* from)
         {
             _Dump(from, delegate(ListEntry* entry) { entry->Dump(); });
         }
 
-        private unsafe delegate void DumpCallbackDelegate(ListEntry* entry);
-
-        private static unsafe void _Dump(NtfsAttribute* from, DumpCallbackDelegate callback)
+        private static unsafe void _Dump(NtfsAttributeListAttribute* from, DumpCallbackDelegate callback)
         {
-            if(null == from) {
+            if (null == from) {
                 throw new ArgumentNullException();
             }
-            if (NtfsAttributeType.AttributeAttributeList != from->AttributeType) {
+            if (NtfsAttributeType.AttributeAttributeList != from->Header.AttributeType) {
                 throw new ArgumentException();
             }
             IPartitionClusterData disposableData = null;
             ListEntry* listBase = null;
             uint listLength;
             try {
-                if (from->IsResident) {
+                if (from->Header.IsResident) {
                     NtfsResidentAttribute* listAttribute = (NtfsResidentAttribute*)from;
                     listBase = (ListEntry*)((byte*)from + listAttribute->ValueOffset);
                     listLength = listAttribute->ValueLength;
@@ -288,6 +288,10 @@ namespace RawDiskReadPOC.NTFS
                 }
             }
         }
+
+        /// <summary>The attribute header. From there we can cast to a resident or non resident
+        /// attribute.</summary>
+        private NtfsAttribute Header;
 
         internal struct ListEntry
         {

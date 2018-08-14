@@ -9,6 +9,16 @@ namespace RawDiskReadPOC.NTFS
     /// <remarks>Size is 0x10/16 bytes.</remarks>
     internal struct NtfsAttribute
     {
+        internal bool IsCompressed
+        {
+            get { return (0 != (Flags & (ushort)_Flags.Compressed)); }
+        }
+
+        internal bool IsEncrypted
+        {
+            get { return (0 != (Flags & (ushort)_Flags.Encrypted)); }
+        }
+
         internal bool IsLast
         {
             get { return (NtfsAttributeType.EndOfListMarker == AttributeType); }
@@ -17,6 +27,11 @@ namespace RawDiskReadPOC.NTFS
         internal bool IsResident
         {
             get { return (0 == Nonresident); }
+        }
+
+        internal bool IsSparse
+        {
+            get { return (0 != (Flags & (ushort)_Flags.Sparse)); }
         }
 
         /// <summary>Returns attribute name or a null reference if the name is undefined.</summary>
@@ -132,5 +147,14 @@ namespace RawDiskReadPOC.NTFS
         /// <summary>The instance of this attribute record. This number is unique within this mft
         /// record (see MFT_RECORD/next_attribute_instance notes in in mft.h for more details).</summary>
         internal ushort AttributeNumber;
+
+        [Flags()]
+        internal enum _Flags : ushort
+        {
+            None = 0,
+            Compressed = 0x0001,
+            Encrypted = 0x4000,
+            Sparse = 0x8000
+        }
     }
 }

@@ -178,6 +178,7 @@ namespace RawDiskReadPOC.NTFS
                 // We are done.
                 return;
             }
+            NtfsAttributeListAttribute.Dump(pendingAttributeList);
             // HandleAttributeListAttributeEntry
             // We have an attribute list attribute. Delegate him the enumeration.
             NtfsPartition currentPartition = NtfsPartition.Current;
@@ -188,9 +189,15 @@ namespace RawDiskReadPOC.NTFS
 
         /// <summary>Retrieve the Nth attribute of a given kind from a file record.</summary>
         /// <param name="kind">Searched attribute type.</param>
+        /// <param name="dataStream">On return this parameter value is a null reference most of
+        /// the time. Otherwise for attributes that are retrieved from an
+        /// <see cref="NtfsAttributeListAttribute"/> instance, this is a stream that support
+        /// attribute data content reading.</param>
         /// <param name="order">Attribute rank. Default is first. This is usefull for some kind of
         /// attributes such as Data one that can appear several times in a record.</param>
-        /// <returns></returns>
+        /// <param name="nameFilter">An optional name filter delegate that will sort out those
+        /// attributes we want to retrieve based on their name.</param>
+        /// <returns>The retrieved attribute or a null reference if not found.</returns>
         internal unsafe NtfsAttribute* GetAttribute(NtfsAttributeType kind, uint order = 1,
             AttributeNameFilterDelegate nameFilter = null)
         {

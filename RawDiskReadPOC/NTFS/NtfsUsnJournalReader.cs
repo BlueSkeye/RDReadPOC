@@ -69,6 +69,7 @@ namespace RawDiskReadPOC.NTFS
                     else {
                         NtfsNonResidentAttribute* jNrAttribute = (NtfsNonResidentAttribute*)jAttribute;
                         jNrAttribute->Dump();
+                        jNrAttribute->OpenDataStream();
                     }
                     throw new NotImplementedException();
                     NtfsAttribute* rawAttribute =
