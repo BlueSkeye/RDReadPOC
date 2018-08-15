@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Threading;
 
 using RawDiskReadPOC.NTFS.Indexing;
@@ -56,20 +57,37 @@ namespace RawDiskReadPOC.NTFS
                     NtfsFileRecord* fileRecord =
                         partition.GetFileRecord(fileDescriptor->FileReference, ref fileData);
                     fileRecord->AssertRecordType();
+                    // We retrieve the first attribute here.
                     NtfsAttribute* jAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData,
                         1, _isDollarJAttributeNameFilter);
                     if (null == jAttribute) {
                         throw new ApplicationException();
                     }
-                    jAttribute->Dump();
                     if (jAttribute->IsResident) {
-                        NtfsResidentAttribute* jReAttribute = (NtfsResidentAttribute*)jAttribute;
-                        jReAttribute->Dump();
+                        // Seems this is never the case.
+                        throw new NotSupportedException("CODE REVIEW REQUIRED");
                     }
-                    else {
-                        NtfsNonResidentAttribute* jNrAttribute = (NtfsNonResidentAttribute*)jAttribute;
-                        jNrAttribute->Dump();
-                        jNrAttribute->OpenDataStream();
+                    NtfsNonResidentAttribute* jNrAttribute = (NtfsNonResidentAttribute*)jAttribute;
+                    jNrAttribute->Dump();
+                    byte[] buffer = new byte[1024];
+                    using (Stream dataStream = jNrAttribute->OpenDataStream()) {
+                        int totalReads = 0;
+                        bool nonNullByteFound = false;
+                        while (true) {
+                            int readCount = dataStream.Read(buffer, 0, buffer.Length);
+                            if (-1 == readCount) { break; }
+                            for(int index = 0; index < readCount; index++) {
+                                if (0 == buffer[index]) { continue; }
+                                Console.WriteLine("{0} null leading bytes", totalReads + index);
+                                nonNullByteFound = true;
+                                break;
+                            }
+                            totalReads += readCount;
+                            if (nonNullByteFound) {
+                                Helpers.BinaryDump(buffer, (uint)readCount);
+                            }
+                        }
+                        int i = 1;
                     }
                     throw new NotImplementedException();
                     NtfsAttribute* rawAttribute =

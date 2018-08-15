@@ -143,11 +143,10 @@ namespace RawDiskReadPOC.NTFS
         /// <returns></returns>
         internal Stream OpenDataStream(List<LogicalChunk> chunks = null)
         {
-            if (0 != this.CompressionUnit) {
-                throw new NotSupportedException("Compressed streams not supported.");
-            }
             if (null == chunks) { chunks = DecodeRunArray(); }
-            return new NonResidentDataStream(chunks, false);
+            return (0 == this.CompressedSize) 
+                ? new NonResidentDataStream(chunks, false)
+                : new NonResidentCompressedDataStream(this.CompressionUnit, chunks, false);
         }
 
         /// <summary>Open a data stream on the data part of this attribute.</summary>
@@ -218,6 +217,18 @@ namespace RawDiskReadPOC.NTFS
                 return string.Format("L={0} LCN={1:X8}{2}",
                     ClustersCount, FirstLogicalClusterNumber, IsSparse ? " (S)" : string.Empty);
             }
+        }
+
+        private class NonResidentCompressedDataStream : NonResidentDataStream
+        {
+            internal NonResidentCompressedDataStream(byte compressionUnit, List<LogicalChunk> chunks,
+                bool clusterStreamBehavior)
+                : base (chunks, clusterStreamBehavior)
+            {
+                _compressionUnit = compressionUnit;
+            }
+
+            private byte _compressionUnit;
         }
 
         private class NonResidentDataStream : Stream, IClusterStream
@@ -376,8 +387,6 @@ namespace RawDiskReadPOC.NTFS
                             if (0 >= _ReadNextCluster()) {
                                 return result;
                             }
-                            _clusterDataPosition = 0;
-                            _currentChunkClusterIndex++;
                         }
                         ulong readCount = remainingExpectedBytes;
                         if (_currentChunkRemainingBytesCount < remainingExpectedBytes) {

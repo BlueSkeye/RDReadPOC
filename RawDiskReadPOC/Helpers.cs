@@ -19,6 +19,22 @@ namespace RawDiskReadPOC
             BinaryDump(size);
         }
 
+        internal static unsafe void BinaryDump(byte[] buffer, uint size)
+        {
+            BinaryDump(buffer, 0, size);
+        }
+
+        internal static unsafe void BinaryDump(byte[] buffer, uint offset, uint size)
+        {
+            if ((offset + size) > buffer.Length) {
+                throw new ArgumentException();
+            }
+            fixed(byte* rawData = buffer) {
+                DumpedAddress = rawData + offset;
+                BinaryDump(size);
+            } 
+        }
+
         internal static unsafe void BinaryDump(uint size)
         {
             for(uint index = 0; index < size; index++) {
