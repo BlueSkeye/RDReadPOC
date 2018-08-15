@@ -90,6 +90,8 @@ namespace RawDiskReadPOC.NTFS
                 _dataSize = dataSize;
             }
 
+            public event IPartitionClusterDataDisposedDelegate Disposed;
+
             public unsafe byte* Data => _data;
 
             public uint DataSize => _dataSize;
@@ -108,6 +110,7 @@ namespace RawDiskReadPOC.NTFS
 
             public void Dispose()
             {
+                Disposed?.Invoke(this);
                 return;
             }
 

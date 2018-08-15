@@ -12,17 +12,20 @@ namespace RawDiskReadPOC
     /// as they are bound to the computation. Later the top caller is expected to dispose the whole batch.
     /// This doesn't prevent intermediate methods to perform early disposal should they wish.</summary>
     /// <remarks>The asynchronous model is not implemented yet.</remarks>
-    internal class PartitionDataDisposableBatch : List<IPartitionClusterData>, IDisposable
+    internal class PartitionDataDisposableBatch :
+        // List<IPartitionClusterData>,
+        IDisposable
     {
         private PartitionDataDisposableBatch()
         {
+            _dispositionHandler = HandlePartitionClusterDataDisposal;
             _inUse = true;
         }
 
         /// <summary>For debugging purpose. Could be unused.</summary>
         internal unsafe void AssertConsistency()
         {
-            foreach(IPartitionClusterData item in this) {
+            foreach(IPartitionClusterData item in _storage.Keys) {
                 if (null == item.Data) {
                     throw new ApplicationException();
                 }
@@ -38,9 +41,16 @@ namespace RawDiskReadPOC
 
         public void Dispose()
         {
-            foreach(IPartitionClusterData item in this) {
+            PartitionDataDisposableBatch candidate = _threadStack.Peek();
+            if (!object.ReferenceEquals(candidate, this)) {
+                throw new ApplicationException();
+            }
+            _threadStack.Pop();
+            _disposing = true;
+            foreach (IPartitionClusterData item in _storage.Keys) {
                 item.Dispose();
             }
+            _storage = null;
             _inUse = false;
         }
 
@@ -65,8 +75,30 @@ namespace RawDiskReadPOC
             return _threadStack.Peek();
         }
 
+        internal void Register(IPartitionClusterData data)
+        {
+            if (null == data) {
+                throw new ArgumentNullException();
+            }
+            data.Disposed += _dispositionHandler;
+            _storage.Add(data, 0);
+        }
+
+        private void HandlePartitionClusterDataDisposal(IPartitionClusterData disposed)
+        {
+            if (!_storage.ContainsKey(disposed)) {
+                throw new ArgumentException();
+            }
+            if (_disposing) { return; }
+            _storage.Remove(disposed);
+        }
+
+        private bool _disposing;
+        private IPartitionClusterDataDisposedDelegate _dispositionHandler;
         private static object _globalLock = new object();
         private bool _inUse;
+        private unsafe Dictionary<IPartitionClusterData, int> _storage =
+            new Dictionary<IPartitionClusterData, int>();
         [ThreadStatic()]
         private static Stack<PartitionDataDisposableBatch> _threadStack = new Stack<PartitionDataDisposableBatch>();
     }

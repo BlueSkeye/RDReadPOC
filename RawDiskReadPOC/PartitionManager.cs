@@ -115,6 +115,8 @@ namespace RawDiskReadPOC
                     _nativeData = (byte*)Marshal.AllocCoTaskMem((int)DataSize).ToPointer();
                 }
 
+                public event IPartitionClusterDataDisposedDelegate Disposed;
+
                 public void BinaryDump()
                 {
                     throw new NotImplementedException();
@@ -138,6 +140,7 @@ namespace RawDiskReadPOC
                             Marshal.FreeCoTaskMem(new IntPtr(_nativeData));
                             _nativeData = null;
                         }
+                        Disposed?.Invoke(this);
                     }
                 }
 

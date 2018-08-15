@@ -289,10 +289,10 @@ namespace RawDiskReadPOC.NTFS
                 if (!_clusterStreamBehavior) {
                     throw new NotSupportedException("Not a cluster stream.");
                 }
-                int clusterReadResult = _ReadNextCluster();
+                bool success = _ReadNextCluster();
                 IPartitionClusterData result = _clusterData;
                 _clusterData = null;
-                if (0 >= clusterReadResult) {
+                if (!success) {
                     if (null != result) {
                         result.Dispose();
                     }
@@ -301,9 +301,8 @@ namespace RawDiskReadPOC.NTFS
                 return result;
             }
 
-            private int _ReadNextCluster()
+            private bool _ReadNextCluster()
             {
-                int result = 0;
                 uint sectorsPerCluster = _partition.SectorsPerCluster;
                 ulong readFromCluster;
                 uint readSectorsCount;
@@ -317,7 +316,7 @@ namespace RawDiskReadPOC.NTFS
                     // Need to go on with next chunk.
                     if (!_chunkEnumerator.MoveNext()) {
                         // No more data available from the partition.
-                        return result;
+                        return false;
                     }
                     _currentChunk = _chunkEnumerator.Current;
                     _currentChunkClusterIndex = 0;
@@ -362,7 +361,7 @@ namespace RawDiskReadPOC.NTFS
                         throw new ApplicationException();
                     }
                 }
-                return (int)_clusterData.DataSize;
+                return true;
             }
 
             public override unsafe int Read(byte[] buffer, int offset, int count)
@@ -384,13 +383,18 @@ namespace RawDiskReadPOC.NTFS
                         if ((null == _clusterData) || (_clusterDataPosition >= _clusterData.DataSize)) {
                             // No more available data in local buffer. Must trigger another read from
                             // underlying partition.
-                            if (0 >= _ReadNextCluster()) {
+                            if (!_ReadNextCluster()) {
                                 return result;
                             }
                         }
-                        ulong readCount = remainingExpectedBytes;
-                        if (_currentChunkRemainingBytesCount < remainingExpectedBytes) {
-                            readCount = _currentChunkRemainingBytesCount;
+                        ulong readCount = (ulong)(_clusterData.DataSize - _clusterDataPosition);
+                        if (readCount > remainingExpectedBytes) {
+                            readCount = remainingExpectedBytes;
+                        }
+                        if (FeaturesContext.InvariantChecksEnabled) {
+                            if (int.MaxValue < readCount) {
+                                throw new ApplicationException();
+                            }
                         }
 
                         // Copy data from local buffer to target one.
@@ -398,16 +402,11 @@ namespace RawDiskReadPOC.NTFS
                         Helpers.Memcpy(_clusterData.Data + _clusterDataPosition, pBuffer + offset,
                             (int)readCount);
                         // Adjust values for next round.
-                        _currentChunkRemainingBytesCount -= _clusterData.DataSize;
-                        ulong effectiveRead = (remainingExpectedBytes < _clusterData.DataSize)
-                            ? remainingExpectedBytes
-                            : _clusterData.DataSize;
-                        if (FeaturesContext.InvariantChecksEnabled) {
-                            if (int.MaxValue < effectiveRead) { throw new ApplicationException(); }
-                        }
-                        _clusterDataPosition += (int)effectiveRead;
-                        remainingExpectedBytes -= effectiveRead;
-                        result += (int)effectiveRead;
+                        _currentChunkRemainingBytesCount -= readCount;
+                        _clusterDataPosition += (int)readCount;
+                        remainingExpectedBytes -= readCount;
+                        result += (int)readCount;
+                        _position += (long)readCount;
                     }
                 }
                 return result;

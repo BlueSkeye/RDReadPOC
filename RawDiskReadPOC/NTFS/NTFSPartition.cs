@@ -901,6 +901,8 @@ namespace RawDiskReadPOC.NTFS
                 }
             }
 
+            public event IPartitionClusterDataDisposedDelegate Disposed;
+
             public unsafe byte* Data => _rawData;
 
             public uint DataSize => _dataSize;
@@ -969,7 +971,7 @@ namespace RawDiskReadPOC.NTFS
                         _partitionClusterDataUsedPool.Add(resultChainTail, 0);
                     }
                     if (!nonPooled) {
-                        PartitionDataDisposableBatch.GetCurrent().Add(result);
+                        PartitionDataDisposableBatch.GetCurrent().Register(result);
                     }
                     return result;
                 }
@@ -995,6 +997,9 @@ namespace RawDiskReadPOC.NTFS
                             }
                         }
                         disposed._rawData = null;
+                        if (null != disposed.Disposed) {
+                            Disposed(disposed);
+                        }
                     }
                 }
             }
