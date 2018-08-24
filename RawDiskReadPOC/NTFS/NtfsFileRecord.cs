@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Runtime.InteropServices;
 
 namespace RawDiskReadPOC.NTFS
 {
@@ -33,34 +34,42 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe void BinaryDump()
         {
             fixed (NtfsFileRecord* dumped = &this) {
-                Helpers.BinaryDump((byte*)dumped, BytesInUse);
+                Helpers.BinaryDump((byte*)dumped, (uint)Marshal.SizeOf<NtfsFileRecord>());
             }
         }
 
         internal unsafe void BinaryDumpContent()
         {
-            NtfsAttribute* dataAttribute = GetAttribute(NtfsAttributeType.AttributeData);
-            if (null == dataAttribute) {
-                throw new ApplicationException();
-            }
-            if (dataAttribute->IsResident) {
-                NtfsResidentAttribute* realDataAttribute = (NtfsResidentAttribute*)dataAttribute;
-                Helpers.BinaryDump((byte*)realDataAttribute + realDataAttribute->ValueOffset,
-                    realDataAttribute->ValueLength);
-            }
-            else {
-                NtfsNonResidentAttribute* realDataAttribute = (NtfsNonResidentAttribute*)dataAttribute;
-                byte[] localBuffer = new byte[16 * 1024];
-                fixed(byte* pBuffer = localBuffer) {
-                    using (Stream dataStream = realDataAttribute->OpenDataStream()) {
+            Stream attributeDataStream = null;
+            try {
+                NtfsAttribute* dataAttribute = GetAttribute(NtfsAttributeType.AttributeData,
+                    out attributeDataStream);
+                if (null == dataAttribute) {
+                    throw new ApplicationException();
+                }
+                if (dataAttribute->IsResident) {
+                    NtfsResidentAttribute* realDataAttribute = (NtfsResidentAttribute*)dataAttribute;
+                    Helpers.BinaryDump((byte*)realDataAttribute + realDataAttribute->ValueOffset,
+                        realDataAttribute->ValueLength);
+                }
+                else {
+                    NtfsNonResidentAttribute* realDataAttribute = (NtfsNonResidentAttribute*)dataAttribute;
+                    byte[] localBuffer = new byte[16 * 1024];
+                    fixed(byte* pBuffer = localBuffer) {
+                        if (null == attributeDataStream) {
+                            attributeDataStream = realDataAttribute->OpenDataStream();
+                        }
                         while (true) {
-                            int readLength = dataStream.Read(localBuffer, 0, localBuffer.Length);
+                            int readLength = attributeDataStream.Read(localBuffer, 0, localBuffer.Length);
                             if (-1 == readLength) { break; }
                             Helpers.BinaryDump(pBuffer, (uint)readLength);
                             if (readLength < localBuffer.Length) { break; }
                         }
                     }
                 }
+            }
+            finally {
+                if (null != attributeDataStream) { attributeDataStream.Close(); }
             }
         }
 
@@ -75,18 +84,32 @@ namespace RawDiskReadPOC.NTFS
             return result;
         }
 
+        internal static unsafe NtfsFileRecord* Create(ulong fileId)
+        {
+            if ((0xFFFFFFFFFFFF & fileId) != fileId) {
+                throw new ArgumentException();
+            }
+            NtfsPartition partition = NtfsPartition.Current;
+            ulong mftEntrySize = partition.ClusterSize / partition.MFTEntryPerCluster;
+            ulong clusterId = fileId / partition.MFTEntryPerCluster;
+            ulong inClusterOffset = (fileId % partition.MFTEntryPerCluster) * mftEntrySize;
+            IPartitionClusterData clusterData = partition.ReadSectors(clusterId * partition.SectorsPerCluster,
+                partition.SectorsPerCluster);
+            return (NtfsFileRecord*)(clusterData.Data + inClusterOffset);
+        }
+
         internal void Dump()
         {
             Ntfs.Dump();
             Console.WriteLine(
-                "Seq {0}, #lnk {1}, aOff {2}, flg {3}, usd {4}, all {5}, bfr {6}, nxA {7}",
+                "Seq {0}, #lnk {1}, aOff {2}, flg {3}, usd {4}, all {5}, bfr 0x{6:X8}, nxA {7}",
                 SequenceNumber, LinkCount, AttributesOffset, Flags, BytesInUse, BytesAllocated,
                 BaseFileRecord, NextAttributeNumber);
         }
 
         internal unsafe void DumpAttributes(bool binaryDump = false)
         {
-            EnumerateRecordAttributes(delegate(NtfsAttribute* attribute) {
+            EnumerateRecordAttributes(delegate(NtfsAttribute* attribute, Stream dataStream) {
                 if (binaryDump) { attribute->BinaryDump(); }
                 else { attribute->Dump(); }
                 return true;
@@ -147,7 +170,7 @@ namespace RawDiskReadPOC.NTFS
                         throw new ApplicationException();
                     }
                     if (NtfsAttributeType.AttributeAttributeList == searchedAttributeType) {
-                        if (!callback(currentAttribute)) { return; }
+                        if (!callback(currentAttribute, null)) { return; }
                     }
                     // Defer handling
                     pendingAttributeList = (NtfsAttributeListAttribute*)currentAttribute;
@@ -173,7 +196,7 @@ namespace RawDiskReadPOC.NTFS
                 // We already walked every attributes and captured those that matched the type filter if
                 // any. Invoke callbak on each such attribute.
                 for(int candidateIndex = 0; candidateIndex < candidatesCount; candidateIndex++) {
-                    if (!callback(candidates[candidateIndex])) { return; }
+                    if (!callback(candidates[candidateIndex], null)) { return; }
                 }
                 // We are done.
                 return;
@@ -198,27 +221,31 @@ namespace RawDiskReadPOC.NTFS
         /// <param name="nameFilter">An optional name filter delegate that will sort out those
         /// attributes we want to retrieve based on their name.</param>
         /// <returns>The retrieved attribute or a null reference if not found.</returns>
-        internal unsafe NtfsAttribute* GetAttribute(NtfsAttributeType kind, uint order = 1,
-            AttributeNameFilterDelegate nameFilter = null)
+        internal unsafe NtfsAttribute* GetAttribute(NtfsAttributeType kind, out Stream dataStream,
+            uint order = 1, AttributeNameFilterDelegate nameFilter = null)
         {
             NtfsAttribute* result = null;
-            EnumerateRecordAttributes(delegate (NtfsAttribute* found) {
+            Stream retrievedDataStream = null;
+            EnumerateRecordAttributes(delegate (NtfsAttribute* found, Stream attributeDataStream) {
                 if (kind == found->AttributeType) {
                     if (0 == --order) {
                         result = found;
+                        retrievedDataStream = attributeDataStream;
                         return false;
                     }
                 }
                 return true;
             },
             kind, nameFilter);
+            dataStream = retrievedDataStream;
             return result;
         }
 
         internal unsafe void* GetResidentAttributeValue(NtfsAttributeType kind,
             out NtfsResidentAttribute* attributeHeader, uint order = 1)
         {
-            attributeHeader = (NtfsResidentAttribute*)GetAttribute(kind, order);
+            Stream dataStream;
+            attributeHeader = (NtfsResidentAttribute*)GetAttribute(kind, out dataStream, order);
             attributeHeader->AssertResident();
             return (null == attributeHeader) ? null : attributeHeader->GetValue();
         }
@@ -294,7 +321,7 @@ namespace RawDiskReadPOC.NTFS
                 if (null != attributeData) {
                     retry = false;
                     // Delegate the continuation decision to our caller.
-                    return _callback(candidateAttribute);
+                    return _callback(candidateAttribute, attributeData);
                 }
                 if ((null != _nameFilter) && !_nameFilter(candidateAttribute)) {
                     // The name filter failed. Go on with next entry.

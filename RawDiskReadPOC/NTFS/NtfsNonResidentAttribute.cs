@@ -13,9 +13,9 @@ namespace RawDiskReadPOC.NTFS
 
         /// <summary>Return number of bytes used for disk storage of this non resident attribute value.
         /// This knowledge is required for <see cref="NtfsRecord"/> fixup application.</summary>
-        internal uint OnDiskSize
+        internal ulong OnDiskSize
         {
-            get { return (0 == CompressionUnit) ? (uint)InitializedSize : (uint)CompressedSize; }
+            get { return (0 == CompressionUnit) ? InitializedSize : CompressedSize; }
         }
 
         internal void AssertNonResident()
@@ -154,9 +154,6 @@ namespace RawDiskReadPOC.NTFS
         /// <returns></returns>
         internal Stream OpenDataClusterStream(List<LogicalChunk> chunks = null)
         {
-            if (0 != this.CompressionUnit) {
-                throw new NotSupportedException("Compressed streams not supported.");
-            }
             if (null == chunks) { chunks = DecodeRunArray(); }
             return new NonResidentDataStream(chunks, true);
         }
@@ -348,6 +345,9 @@ namespace RawDiskReadPOC.NTFS
                 }
                 // Perform read and reinitialize some internal values.
                 ulong readFromSector = readFromCluster * sectorsPerCluster;
+                if (null != _clusterData) {
+                    _clusterData.Dispose();
+                }
                 _clusterData = (_currentChunk.IsSparse)
                     ? _partition.ReadSparseSectors(readSectorsCount)
                     : _partition.ReadSectors(readFromSector, readSectorsCount);
@@ -384,7 +384,7 @@ namespace RawDiskReadPOC.NTFS
                             // No more available data in local buffer. Must trigger another read from
                             // underlying partition.
                             if (!_ReadNextCluster()) {
-                                return result;
+                                return -1;
                             }
                         }
                         ulong readCount = (ulong)(_clusterData.DataSize - _clusterDataPosition);

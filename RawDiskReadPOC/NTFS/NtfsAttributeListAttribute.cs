@@ -5,7 +5,8 @@ using System.Text;
 
 namespace RawDiskReadPOC.NTFS
 {
-    /// <summary></summary>
+    /// <summary>Used whenever all attributes can't fit in a single MFT record. Several records are
+    /// required and this attribute is used to list all of these records.</summary>
     /// <remarks>Can be either resident or non-resident.
     /// Value consists of a sequence of variable length, 8-byte aligned, ATTR_LIST_ENTRY
     /// records.
@@ -201,7 +202,9 @@ namespace RawDiskReadPOC.NTFS
                     }
                     // The last callback invocation decided it needs some data from the attribute
                     // itself before deciding what to do.
-                    if (!HandleEntryReferencedAttribute(scannedEntry, attributeDataHandler, includeData)) {
+                    if (!HandleEntryReferencedAttribute(scannedEntry, listLength - offset,
+                        attributeDataHandler, includeData))
+                    {
                         return;
                     }
                 }
@@ -218,12 +221,14 @@ namespace RawDiskReadPOC.NTFS
         /// <param name="entry">The scanned list entry of interest. Should a single
         /// attribute span several entries, this one is guaranteed to be the first one for the
         /// attribute.</param>
+        /// <param name="remainingBytesInList">Number of bytes remaining in list, relatively to the
+        /// entry address.</param>
         /// <param name="entryReferencedAttributeHandler">The callback that will be invoked
         /// with the referenced attribute with or without full attribute data depending on
         /// the value of <paramref name="dataIncluded"/></param>
         /// <param name="dataIncluded"></param>
         /// <returns>true if caller should continue process data, false if it should stop.</returns>
-        private static unsafe bool HandleEntryReferencedAttribute(ListEntry* entry,
+        private static unsafe bool HandleEntryReferencedAttribute(ListEntry* entry, uint remainingBytesInList,
             EntryListReferencedAttributeHandlerDelegate entryReferencedAttributeHandler,
             bool dataIncluded)
         {
@@ -244,10 +249,14 @@ namespace RawDiskReadPOC.NTFS
                     List<ulong> entries = new List<ulong>();
                     Stream dataStream = null;
                     if (dataIncluded) {
-                        // Read each record and prepare for data retrieval
+                        // Read each record and prepare for data retrieval. 
                         while (true) {
                             entries.Add(scannedEntry->FileReferenceNumber);
                             relativeOffset += scannedEntry->EntryLength;
+                            if (relativeOffset >= remainingBytesInList) {
+                                // Take care not to go further than the end of the list.
+                                break;
+                            }
                             scannedEntry = (ListEntry*)(baseAddress + relativeOffset);
                             if (   (currentAttributeNumber != scannedEntry->AttributeNumber)
                                 || (currentAttributeType != scannedEntry->AttributeType))
@@ -347,17 +356,23 @@ namespace RawDiskReadPOC.NTFS
             // The name if any starts here.
         }
 
+        /// <summary>Implement a datastream that span over several file records. This is quite specific
+        /// and can only be found with attributes defined through an attributeListAttribute such as
+        /// for the $J attribute of the Usn journal</summary>
         internal class MultiRecordAttributeDataStream : Stream
         {
-            internal MultiRecordAttributeDataStream(List<ulong> entries)
+            internal MultiRecordAttributeDataStream(List<ulong> fileReferenceNumbers)
             {
-                if (null == entries) {
+                if (null == fileReferenceNumbers) {
                     throw new ArgumentNullException();
                 }
-                if (1 > entries.Count) {
+                if (1 > fileReferenceNumbers.Count) {
                     throw new ArgumentException();
                 }
-                _entries = new List<ulong>(entries);
+                _fileReferenceNumbers = new List<ulong>(fileReferenceNumbers);
+                _currentEntryIndex = 0;
+                _currentEntry = _fileReferenceNumbers[_currentEntryIndex];
+                _thisBatch = PartitionDataDisposableBatch.CreateNew(true);
             }
 
             public override bool CanRead => true;
@@ -376,6 +391,13 @@ namespace RawDiskReadPOC.NTFS
                 set => throw new NotSupportedException();
             }
 
+            protected override void Dispose(bool disposing)
+            {
+                base.Dispose(disposing);
+                _thisBatch.Detach();
+                _thisBatch.Dispose();
+            }
+
             public override void Flush()
             {
                 throw new NotSupportedException();
@@ -383,7 +405,13 @@ namespace RawDiskReadPOC.NTFS
 
             public override int Read(byte[] buffer, int offset, int count)
             {
-                throw new NotImplementedException();
+                _thisBatch.Attach();
+                try {
+                    throw new NotImplementedException();
+                }
+                finally {
+                    _thisBatch.Detach();
+                }
             }
 
             public override long Seek(long offset, SeekOrigin origin)
@@ -401,7 +429,10 @@ namespace RawDiskReadPOC.NTFS
                 throw new NotImplementedException();
             }
 
-            private List<ulong> _entries;
+            private PartitionDataDisposableBatch _thisBatch;
+            private ulong _currentEntry;
+            private int _currentEntryIndex;
+            private List<ulong> _fileReferenceNumbers;
         }
     }
 }

@@ -599,12 +599,21 @@ hbin
 AttributeListAttribute example
 ==============================
 
+A single file can group several attributes.
+Asingle attribute can span several files (as for $J)
+
 T:AttributeStandardInformation, L:32, VCN:0x00000000, FRN:0x200000001FF61, #0 ()
+	AttributeStandardInformation (unnamed) stored in file 0x00000001FF61
 T:AttributeFileName, L:32, VCN:0x00000000, FRN:0x200000001FF61, #1 ()
+	AttributeFileName (unnamed) stored in file 0x00000001FF61
 T:AttributeData, L:32, VCN:0x00000000, FRN:0x10000000417F8, #0 ($J)
+	0x00831030 clusters in file 0x0000000417F8
 T:AttributeData, L:32, VCN:0x00831030, FRN:0x133000000030345, #0 ($J)
+	0x4CB0 clusters in file 0x000000030345
 T:AttributeData, L:32, VCN:0x00835CE0, FRN:0x79200000000288E, #0 ($J)
+	0x4180 clusters in file 0x0000000059EB
 T:AttributeData, L:32, VCN:0x00839E60, FRN:0x16C0000000059EB, #0 ($J)
+	0x8F80 clusters in file 0000000057C6
 T:AttributeData, L:32, VCN:0x00842DE0, FRN:0x7340000000057C6, #0 ($J)
 T:AttributeData, L:32, VCN:0x00844160, FRN:0x600000018405F, #0 ($J)
 T:AttributeData, L:32, VCN:0x0084A215, FRN:0x8F000000036956, #0 ($J)
@@ -662,7 +671,10 @@ T:AttributeData, L:32, VCN:0x00940380, FRN:0xA7000000004A8C, #0 ($J)
 T:AttributeData, L:32, VCN:0x00945C6F, FRN:0x6F000000008D46, #0 ($J)
 T:AttributeData, L:32, VCN:0x0094C310, FRN:0x3A0000000D9AA7, #0 ($J)
 T:AttributeData, L:32, VCN:0x00954910, FRN:0x4C0000000D9A91, #0 ($J)
+
 T:AttributeData, L:40, VCN:0x00000000, FRN:0x200000001FF61, #181 ($Max)
+	AttributeData ($Max) stored in file 0x00000001FF61
+
 
 Dumping the attribute itself
 T:AttributeData, L=88, NR, Flg 0x8000, Att# 0 ($J)

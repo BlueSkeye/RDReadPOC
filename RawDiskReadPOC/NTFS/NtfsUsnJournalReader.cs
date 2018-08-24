@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Text;
 using System.Threading;
 
 using RawDiskReadPOC.NTFS.Indexing;
@@ -58,8 +59,9 @@ namespace RawDiskReadPOC.NTFS
                         partition.GetFileRecord(fileDescriptor->FileReference, ref fileData);
                     fileRecord->AssertRecordType();
                     // We retrieve the first attribute here.
+                    Stream dataStream;
                     NtfsAttribute* jAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData,
-                        1, _isDollarJAttributeNameFilter);
+                        out dataStream, 1, _isDollarJAttributeNameFilter);
                     if (null == jAttribute) {
                         throw new ApplicationException();
                     }
@@ -69,29 +71,44 @@ namespace RawDiskReadPOC.NTFS
                     }
                     NtfsNonResidentAttribute* jNrAttribute = (NtfsNonResidentAttribute*)jAttribute;
                     jNrAttribute->Dump();
-                    byte[] buffer = new byte[1024];
-                    using (Stream dataStream = jNrAttribute->OpenDataStream()) {
-                        int totalReads = 0;
-                        bool nonNullByteFound = false;
-                        while (true) {
-                            int readCount = dataStream.Read(buffer, 0, buffer.Length);
-                            if (-1 == readCount) { break; }
-                            for(int index = 0; index < readCount; index++) {
+                    byte[] buffer = new byte[NtfsPartition.Current.ClusterSize];
+                    DateTime sparseReadStartTime = DateTime.UtcNow;
+                    TimeSpan sparseReadDuration;
+                    if (null == dataStream) {
+                        dataStream = jNrAttribute->OpenDataStream();
+                        throw new ApplicationException("CODE REVIEW REQUIRED");
+                    }
+                    int totalReads = 0;
+                    bool nonNullByteFound = false;
+                    while (true) {
+                        int readCount = dataStream.Read(buffer, 0, buffer.Length);
+                        if (-1 == readCount) {
+                            sparseReadDuration = DateTime.UtcNow - sparseReadStartTime;
+                            break;
+                        }
+                        if (nonNullByteFound) {
+                            for (int index = 0; index < readCount; index++) {
                                 if (0 == buffer[index]) { continue; }
-                                Console.WriteLine("{0} null leading bytes", totalReads + index);
+                                sparseReadDuration = DateTime.UtcNow - sparseReadStartTime;
+                                Console.WriteLine("{0} null leading bytes found after {1} secs.",
+                                    totalReads + index, (int)sparseReadDuration.TotalSeconds);
                                 nonNullByteFound = true;
                                 break;
                             }
-                            totalReads += readCount;
-                            if (nonNullByteFound) {
-                                Helpers.BinaryDump(buffer, (uint)readCount);
-                            }
                         }
-                        int i = 1;
+                        totalReads += readCount;
+                        if (nonNullByteFound) {
+                            Helpers.BinaryDump(buffer, (uint)readCount);
+                        }
+                    }
+                    if (!nonNullByteFound) {
+                        sparseReadDuration = DateTime.UtcNow - sparseReadStartTime;
+                        Console.WriteLine("{0} null leading bytes found after {1} secs.",
+                            totalReads, (int)sparseReadDuration.TotalSeconds);
                     }
                     throw new NotImplementedException();
                     NtfsAttribute* rawAttribute =
-                        fileRecord->GetAttribute(NtfsAttributeType.AttributeData, 1);
+                        fileRecord->GetAttribute(NtfsAttributeType.AttributeData, out dataStream, 1);
                     if (null == rawAttribute) {
                         throw new ApplicationException();
                     }
@@ -110,7 +127,7 @@ namespace RawDiskReadPOC.NTFS
                     else {
                         throw new NotSupportedException();
                     }
-                    rawAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData, 2);
+                    rawAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData, out dataStream, 2);
                     if (null == rawAttribute) {
                         throw new ApplicationException();
                     }
@@ -216,6 +233,17 @@ namespace RawDiskReadPOC.NTFS
         /// </remarks>
         internal struct UsnRecordV2
         {
+            internal unsafe void Dump()
+            {
+                fixed(UsnRecordV2* thisRecord = &this) {
+                    Console.WriteLine("Frn 0x{0:X8}, Pfrn 0x{1:X8}, Usn 0x{2:X4}",
+                        FileReferenceNumber, ParentFileReferenceNumber, Usn);
+                    Console.WriteLine(Encoding.Unicode.GetString(
+                        (byte*)thisRecord + thisRecord->FileNameOffset, thisRecord->FileNameLength));
+                    Console.WriteLine("Src {0}, {1}", SourceInfo, Reason);
+                }
+            }
+
             internal uint RecordLength;
             internal ushort MajorVersion;
             internal ushort MinorVersion;

@@ -47,7 +47,7 @@ namespace RawDiskReadPOC.NTFS
         private unsafe void AssertNoOverflowingAttribute()
         {
             NtfsFileRecord.EnumerateRecordAttributes(this.RecordBase,
-                delegate (NtfsAttribute* attribute) {
+                delegate (NtfsAttribute* attribute, Stream attributeData) {
                     throw new AssertionException("$MFT record not expected to contain an attribute list attribute");
                 },
                 NtfsAttributeType.AttributeAttributeList, null);
@@ -72,8 +72,10 @@ namespace RawDiskReadPOC.NTFS
 
         internal unsafe void EnumerateRecords(FileRecordEnumeratorDelegate callback)
         {
+            Stream attributeData;
             NtfsNonResidentAttribute* dataAttribute =
-                (NtfsNonResidentAttribute*)RecordBase->GetAttribute(NtfsAttributeType.AttributeData);
+                (NtfsNonResidentAttribute*)RecordBase->GetAttribute(
+                    NtfsAttributeType.AttributeData, out attributeData);
             if (null == dataAttribute) {
                 throw new ApplicationException();
             }
@@ -94,7 +96,8 @@ namespace RawDiskReadPOC.NTFS
             byte[] localBuffer = new byte[clusterSize];
             Stream mftDataStream = dataAttribute->OpenDataStream();
             try {
-                NtfsBitmapAttribute* bitmap = (NtfsBitmapAttribute*)RecordBase->GetAttribute(NtfsAttributeType.AttributeBitmap);
+                NtfsBitmapAttribute* bitmap = (NtfsBitmapAttribute*)RecordBase->GetAttribute(
+                    NtfsAttributeType.AttributeBitmap, out attributeData);
                 if (null == bitmap) { throw new AssertionException("Didn't find the $MFT bitmap attribute."); }
                 IEnumerator<bool> bitmapEnumerator = bitmap->GetContentEnumerator();
                 ulong recordIndex = 0;

@@ -187,13 +187,16 @@ namespace RawDiskReadPOC.NTFS
                 clusterData = ReadSectors(currentRecordLBA, SectorsPerCluster);
                 NtfsFileRecord* fileRecord = (NtfsFileRecord*)(clusterData.Data);
                 fileRecord->AssertRecordType();
+                Stream attributeData;
                 NtfsFileNameAttribute* fileName =
-                    (NtfsFileNameAttribute*)(fileRecord->GetAttribute(NtfsAttributeType.AttributeFileName));
+                    (NtfsFileNameAttribute*)(fileRecord->GetAttribute(NtfsAttributeType.AttributeFileName,
+                        out attributeData));
                 if (null == fileName) {
                     throw new ApplicationException();
                 }
                 // First $DATA attribute is expected to be empty.
-                NtfsAttribute* dataAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData, 1);
+                NtfsAttribute* dataAttribute = fileRecord->GetAttribute(
+                    NtfsAttributeType.AttributeData, out attributeData, 1);
                 if (null == dataAttribute) {
                     throw new ApplicationException();
                 }
@@ -201,7 +204,7 @@ namespace RawDiskReadPOC.NTFS
                 // dataAttribute->BinaryDump();
 
                 // Second $DATA attribute is the real data.
-                dataAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData, 2);
+                dataAttribute = fileRecord->GetAttribute(NtfsAttributeType.AttributeData, out attributeData, 2);
                 if (null == dataAttribute) {
                     throw new ApplicationException();
                 }
@@ -320,7 +323,7 @@ namespace RawDiskReadPOC.NTFS
                 for (int attributeIndex = 0; attributeIndex < header->NextAttributeNumber; attributeIndex++) {
                     if (ushort.MaxValue == currentAttribute->AttributeNumber) { break; }
                     if (header->BytesInUse < ((byte*)currentAttribute - (byte*)header)) { break; }
-                    if (!callback(currentAttribute)) { return; }
+                    if (!callback(currentAttribute, null)) { return; }
                     if (NtfsAttributeType.EndOfListMarker == currentAttribute->AttributeType) { break; }
                     currentAttribute = (NtfsAttribute*)((byte*)currentAttribute + currentAttribute->Length);
                 }
@@ -341,15 +344,17 @@ namespace RawDiskReadPOC.NTFS
         {
             if (FeaturesContext.FindFileAlgorithmTrace) {
                 fromRecord->Dump();
-                fromRecord->EnumerateRecordAttributes(delegate (NtfsAttribute* attribute) {
+                fromRecord->EnumerateRecordAttributes(delegate (NtfsAttribute* attribute, Stream attributeData) {
                     attribute->Dump();
                     return true;
                 });
             }
             handedOffClusterData = null;
             NtfsRecord* result = null;
+            Stream rootAttributeData;
             NtfsResidentAttribute* rootIndexAttributeHeader =
-                (NtfsResidentAttribute*)(fromRecord->GetAttribute(NtfsAttributeType.AttributeIndexRoot));
+                (NtfsResidentAttribute*)(fromRecord->GetAttribute(
+                    NtfsAttributeType.AttributeIndexRoot, out rootAttributeData));
             if (null == rootIndexAttributeHeader) {
                 throw new ApplicationException();
             }
@@ -408,8 +413,10 @@ namespace RawDiskReadPOC.NTFS
             NtfsIndexAllocationAttribute* indexAllocationAttribute = null;
             // The index allocation attribute holds those files that are "after" the last root index entry
             // according to the sort order.
+            Stream allocationAttributeData;
             NtfsNonResidentAttribute* indexAllocationAttributeHeader =
-                (NtfsNonResidentAttribute*)(fromRecord->GetAttribute(NtfsAttributeType.AttributeIndexAllocation));
+                (NtfsNonResidentAttribute*)(fromRecord->GetAttribute(
+                    NtfsAttributeType.AttributeIndexAllocation, out allocationAttributeData));
             // The Index allocation attribute may be missing. 
             if (null == indexAllocationAttributeHeader) {
                 throw new ApplicationException("TODO : missed something here.");
@@ -674,7 +681,7 @@ namespace RawDiskReadPOC.NTFS
         private unsafe void LoadVCNList()
         {
             bool done = false;
-            this._mft.EnumerateRecordAttributes(delegate (NtfsAttribute* attribute) {
+            this._mft.EnumerateRecordAttributes(delegate (NtfsAttribute* attribute, Stream attributeData) {
                 switch (attribute->AttributeType) {
                     case NtfsAttributeType.AttributeData:
                         done = true;
@@ -749,7 +756,7 @@ namespace RawDiskReadPOC.NTFS
         internal unsafe void TraceMFT()
         {
             this.MFT.RecordBase->EnumerateRecordAttributes(
-                delegate (NtfsAttribute* attribute) {
+                delegate (NtfsAttribute* attribute, Stream attributeData) {
                     Console.WriteLine("{0} {1}",
                         attribute->AttributeType, (0 == attribute->Nonresident) ? "Re" : "NR");
                     if (0 != attribute->Nonresident)
@@ -816,7 +823,7 @@ namespace RawDiskReadPOC.NTFS
         /// <remarks>WARNING : In a live environment, the chunks mapping MAY change over time, though in
         /// cases that are expected to be unlikely. No safeguard or detection is implemented in this code.
         /// </remarks>
-        private ulong VCNtoLCN(ulong virtualClusterNumber)
+        internal ulong VCNtoLCN(ulong virtualClusterNumber)
         {
             ulong cumulatedClustersCount = 0;
             foreach(NtfsNonResidentAttribute.LogicalChunk mapping in _chunks) {
@@ -831,8 +838,10 @@ namespace RawDiskReadPOC.NTFS
 
         private unsafe void WalkUsedRecord(BitmapWalkerDelegate callback)
         {
+            Stream attributeData;
             NtfsNonResidentAttribute* dataAttribute =
-                (NtfsNonResidentAttribute*)_mft.RecordBase->GetAttribute(NtfsAttributeType.AttributeData);
+                (NtfsNonResidentAttribute*)_mft.RecordBase->GetAttribute(
+                    NtfsAttributeType.AttributeData, out attributeData);
             if (null == dataAttribute) {
                 throw new ApplicationException();
             }
@@ -852,7 +861,8 @@ namespace RawDiskReadPOC.NTFS
             byte[] localBuffer = new byte[clusterSize];
             Stream mftDataStream = dataAttribute->OpenDataStream();
             try {
-                NtfsBitmapAttribute* bitmap = (NtfsBitmapAttribute*)_mft.RecordBase->GetAttribute(NtfsAttributeType.AttributeBitmap);
+                NtfsBitmapAttribute* bitmap = (NtfsBitmapAttribute*)_mft.RecordBase->GetAttribute(
+                    NtfsAttributeType.AttributeBitmap, out attributeData);
                 if (null == bitmap) { throw new AssertionException("Didn't find the $MFT bitmap attribute."); }
                 IEnumerator<bool> bitmapEnumerator = bitmap->GetContentEnumerator();
                 ulong recordIndex = 0;

@@ -22,6 +22,11 @@ namespace RawDiskReadPOC
             _inUse = true;
         }
 
+        internal bool Detached
+        {
+            get { return _detached; }
+        }
+
         /// <summary>For debugging purpose. Could be unused.</summary>
         internal unsafe void AssertConsistency()
         {
@@ -32,11 +37,38 @@ namespace RawDiskReadPOC
             }
         }
 
-        internal static PartitionDataDisposableBatch CreateNew()
+        internal void Attach()
+        {
+            if (!_detached) {
+                throw new InvalidOperationException();
+            }
+            _threadStack.Push(this);
+            _detached = false;
+        }
+
+        internal static PartitionDataDisposableBatch CreateNew(bool detached = false)
         {
             PartitionDataDisposableBatch result = new PartitionDataDisposableBatch();
-            _threadStack.Push(result);
+            result._detached = detached;
+            if (!detached) {
+                _threadStack.Push(result);
+            }
             return result;
+        }
+
+        internal void Detach()
+        {
+            if (_detached) {
+                throw new InvalidOperationException("Already detached.");
+            }
+            if (1 >= _threadStack.Count) {
+                throw new InvalidOperationException("Can't detach last batch.");
+            }
+            if (!object.ReferenceEquals(_threadStack.Peek(), this)) {
+                throw new InvalidOperationException("Can't detach non topmost batch.");
+            }
+            _threadStack.Pop();
+            _detached = true;
         }
 
         public void Dispose()
@@ -82,17 +114,23 @@ namespace RawDiskReadPOC
             }
             data.Disposed += _dispositionHandler;
             _storage.Add(data, 0);
+            if (FeaturesContext.DataPoolChecksEnabled) {
+                if (StorageCountAlert < _storage.Count) {
+                    throw new ApplicationException();
+                }
+            }
         }
 
         private void HandlePartitionClusterDataDisposal(IPartitionClusterData disposed)
         {
-            if (!_storage.ContainsKey(disposed)) {
+            if (_disposing) { return; }
+            if (!_storage.Remove(disposed)) {
                 throw new ArgumentException();
             }
-            if (_disposing) { return; }
-            _storage.Remove(disposed);
         }
 
+        private const int StorageCountAlert = 512;
+        private bool _detached;
         private bool _disposing;
         private IPartitionClusterDataDisposedDelegate _dispositionHandler;
         private static object _globalLock = new object();
