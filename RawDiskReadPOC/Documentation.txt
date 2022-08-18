@@ -4,7 +4,13 @@ CHK_INVARIANTS : Check invariants.
 TRC_FINDFILE : Trace operations for FindFile. (switchable at runtime)
 
 Ideas
+=====
 - Implement asynchronous I/O. Extended parameters are required.
+
+External documents
+==================
+Handling some corner cases
+https://harelsegev.github.io/posts/resolving-file-paths-using-the-mft/
 
 Sample MBR partitions
 80 20 21 00 27 59 1A BF 00 08 00 00 00 E0 2E 00

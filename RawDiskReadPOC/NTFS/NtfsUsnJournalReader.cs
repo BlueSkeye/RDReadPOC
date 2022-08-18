@@ -244,12 +244,26 @@ namespace RawDiskReadPOC.NTFS
                 }
             }
 
+            public override unsafe string ToString()
+            {
+                fixed (UsnRecordV2* thisRecord = &this) {
+                    return string.Format("{0} : {1} {2}",
+                        (Epoch + new TimeSpan((long)thisRecord->TimeStamp)).ToString("u"), Reason,
+                        Encoding.Unicode.GetString(
+                            (byte*)thisRecord + thisRecord->FileNameOffset, thisRecord->FileNameLength));
+                }
+            }
+
+            private static readonly DateTime Epoch = new DateTime(1601, 1, 1);
+
             internal uint RecordLength;
             internal ushort MajorVersion;
             internal ushort MinorVersion;
             internal ulong FileReferenceNumber;
             internal ulong ParentFileReferenceNumber;
             internal ulong Usn;
+            /// <summary>Contains a 64-bit value representing the number of 100-nanosecond intervals since
+            /// January 1, 1601 (UTC).</summary>
             internal ulong TimeStamp;
             internal UsnReason Reason;
             internal uint SourceInfo;
