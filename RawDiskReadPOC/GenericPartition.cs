@@ -67,7 +67,7 @@ namespace RawDiskReadPOC
                     hiddenPartition = true;
                     goto case 0x07;
                 default:
-                    Console.WriteLine("unsupported partition type 0x{0:X2}.", partitionType);
+                    Console.WriteLine("Unsupported partition type 0x{0:X2}.", partitionType);
                     return null;
             }
             if (null != result) {

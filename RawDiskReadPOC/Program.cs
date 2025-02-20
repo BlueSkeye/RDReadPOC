@@ -29,14 +29,16 @@ namespace RawDiskReadPOC
 
         private static void InstallExceptionHandlers()
         {
-            AppDomain.CurrentDomain.FirstChanceException += delegate (object sender, FirstChanceExceptionEventArgs e) {
-                Exception ex = e.Exception;
-                return;
-            };
-            AppDomain.CurrentDomain.UnhandledException += delegate (object sender, UnhandledExceptionEventArgs e) {
-                Exception ex = e.ExceptionObject as Exception;
-                return;
-            };
+            AppDomain.CurrentDomain.FirstChanceException +=
+                delegate (object sender, FirstChanceExceptionEventArgs e) {
+                    Exception ex = e.Exception;
+                    return;
+                };
+            AppDomain.CurrentDomain.UnhandledException +=
+                delegate (object sender, UnhandledExceptionEventArgs e) {
+                    Exception ex = e.ExceptionObject as Exception;
+                    return;
+                };
         }
 
         private static unsafe void InterpretActivePartitions()
@@ -75,9 +77,10 @@ namespace RawDiskReadPOC
                         0x02 /* FILE_SHARE_WRITE */, 3 /* OPEN_EXISTING */, IntPtr.Zero);
                     nativeError = Marshal.GetLastWin32Error();
                     if ((IntPtr.Zero == handle) || (0 != nativeError)) {
-                        Console.WriteLine("Physical drive opening failed. Error 0x{0:X8}", nativeError);
+                        Console.WriteLine("[-] Physical drive opening failed. Error 0x{0:X8}", nativeError);
                         return 1;
                     }
+                    Console.WriteLine("[+] Physical drive opening succeeded.");
                     geometry.Acquire(handle);
                     _partitionManager = new PartitionManager(handle, geometry);
                     _partitionManager.Discover();

@@ -2,12 +2,12 @@
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
-using RawDiskReadPOC.NTFS;
-
 namespace RawDiskReadPOC
 {
     internal class PartitionManager
     {
+        private static readonly IntPtr ThisProcessHandle = new IntPtr(-1);
+
         internal PartitionManager(IntPtr rawHandle, DiskGeometry geometry)
         {
             lock (typeof(PartitionManager)) {
@@ -20,7 +20,7 @@ namespace RawDiskReadPOC
             _rawHandle = rawHandle;
         }
 
-        internal DiskGeometry Geometry { get { return _geometry; } }
+        internal DiskGeometry Geometry => _geometry;
 
         internal static PartitionManager Singleton { get; private set; }
 
@@ -39,28 +39,28 @@ namespace RawDiskReadPOC
                 // as the ExtendedBoot Record format.
                 for (uint partitionIndex = 0; partitionIndex < 4; partitionIndex++) {
                     IntPtr partitionHandle;
-                    if (!Natives.DuplicateHandle(new IntPtr(-1), _rawHandle,
-                        new IntPtr(-1), out partitionHandle, 0 /* ignored because same access */,
+                    if (!Natives.DuplicateHandle(ThisProcessHandle, _rawHandle, ThisProcessHandle,
+                        out partitionHandle, 0 /* ignored because same access */,
                         false, 2 /*DUPLICATE_SAME_ACCESS*/))
                     {
                         throw new ApplicationException();
                     }
-                    GenericPartition newPartition = GenericPartition.Create(partitionHandle, masterBootRecord, 446 + (16 * partitionIndex));
+                    GenericPartition newPartition = GenericPartition.Create(partitionHandle,
+                        masterBootRecord, 446 + (16 * partitionIndex));
                     if (null == newPartition) {
                         Natives.CloseHandle(partitionHandle);
+                        continue;
                     }
-                    else { 
-                        // TODO : This algorithm doesn't let us witness the extra sectors after the last partition.
-                        if (minSector > newPartition.StartSector) {
-                            minSector = newPartition.StartSector;
-                        }
-                        if (maxSector < (newPartition.StartSector + newPartition.SectorCount - 1)) {
-                            maxSector = newPartition.StartSector + newPartition.SectorCount - 1;
-                        }
-                        _partitions.Add(newPartition);
+                    // TODO : This algorithm doesn't let us witness the extra sectors after the last partition.
+                    if (minSector > newPartition.StartSector) {
+                        minSector = newPartition.StartSector;
                     }
+                    if (maxSector < (newPartition.StartSector + newPartition.SectorCount - 1)) {
+                        maxSector = newPartition.StartSector + newPartition.SectorCount - 1;
+                    }
+                    _partitions.Add(newPartition);
                 }
-                Console.WriteLine("Found {0} partitions.", _partitions.Count);
+                Console.WriteLine("[+] Found {0} partitions.", _partitions.Count);
                 if (maxSector < minSector) { throw new ApplicationException(); }
                 _volumePartition = new VolumePartition(_rawHandle, minSector, maxSector - minSector);
                 return;
@@ -105,6 +105,9 @@ namespace RawDiskReadPOC
 
             private class MinimalPartitionClusterDataImpl : IPartitionClusterData
             {
+                private const int AllocationChunkSize = 1024;
+                private unsafe byte* _nativeData;
+
                 public unsafe MinimalPartitionClusterDataImpl(uint count)
                 {
                     if (0 == count) {
@@ -149,9 +152,6 @@ namespace RawDiskReadPOC
                     Helpers.Zeroize(_nativeData, AllocationChunkSize);
                     return this;
                 }
-
-                private const int AllocationChunkSize = 1024;
-                private unsafe byte* _nativeData;
             }
         }
     }

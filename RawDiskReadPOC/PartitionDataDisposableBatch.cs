@@ -4,9 +4,9 @@ using System.Threading;
 
 namespace RawDiskReadPOC
 {
-    /// <summary>Sometimes, computations  involving allocation of <see cref="IPartitionClusterData"/> items
-    /// can be convoluted, involving several delegates and callbacks and maybe asynchronous calls in the
-    /// future. Thus, it is not easy to define a disposal strategy that fit everyone needs. This class is
+    /// <summary>Sometimes, computations involving allocation of <see cref="IPartitionClusterData"/> items
+    /// can be convoluted. They may require several delegates and callbacks and maybe asynchronous calls in
+    /// the future. Thus, it is not easy to define a disposal strategy that fit everyone needs. This class is
     /// a container that will accumulate such objects that are intended to be disposed at once. The top
     /// level caller is expected to create this object, then let involved methods add items to the object
     /// as they are bound to the computation. Later the top caller is expected to dispose the whole batch.
@@ -16,6 +16,17 @@ namespace RawDiskReadPOC
         // List<IPartitionClusterData>,
         IDisposable
     {
+        private const int StorageCountAlert = 512;
+        private bool _detached;
+        private bool _disposing;
+        private IPartitionClusterDataDisposedDelegate _dispositionHandler;
+        private static object _globalLock = new object();
+        private bool _inUse;
+        private unsafe Dictionary<IPartitionClusterData, int> _storage =
+            new Dictionary<IPartitionClusterData, int>();
+        [ThreadStatic()]
+        private static Stack<PartitionDataDisposableBatch> _threadStack = new Stack<PartitionDataDisposableBatch>();
+
         private PartitionDataDisposableBatch()
         {
             _dispositionHandler = HandlePartitionClusterDataDisposal;
@@ -128,16 +139,5 @@ namespace RawDiskReadPOC
                 throw new ArgumentException();
             }
         }
-
-        private const int StorageCountAlert = 512;
-        private bool _detached;
-        private bool _disposing;
-        private IPartitionClusterDataDisposedDelegate _dispositionHandler;
-        private static object _globalLock = new object();
-        private bool _inUse;
-        private unsafe Dictionary<IPartitionClusterData, int> _storage =
-            new Dictionary<IPartitionClusterData, int>();
-        [ThreadStatic()]
-        private static Stack<PartitionDataDisposableBatch> _threadStack = new Stack<PartitionDataDisposableBatch>();
     }
 }
